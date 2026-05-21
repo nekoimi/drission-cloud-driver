@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"time"
 
 	"go.uber.org/zap"
@@ -63,8 +64,7 @@ func (c *Client) StopProfile(ctx context.Context, profileID string) error {
 	return c.do(ctx, http.MethodPost, path, nil, nil)
 }
 
-// GetCDPEndpoint returns the CDP HTTP endpoint for a profile.
-// go-rod will handle the WebSocket upgrade internally.
+// GetCDPEndpoint returns the CDP WebSocket endpoint for a profile.
 func (c *Client) GetCDPEndpoint(ctx context.Context, profileID string) (string, error) {
 	profile, err := c.GetProfile(ctx, profileID)
 	if err != nil {
@@ -74,13 +74,36 @@ func (c *Client) GetCDPEndpoint(ctx context.Context, profileID string) (string, 
 		return "", fmt.Errorf("profile %s has no CDP endpoint, status: %s", profileID, profile.Status)
 	}
 
-	// If CDPUrl is a relative path, convert to full HTTP URL
-	cdpURL := profile.CDPUrl
-	if len(cdpURL) > 0 && cdpURL[0] == '/' {
-		cdpURL = c.baseURL + cdpURL
+	// Parse base URL to extract host and port
+	base, err := url.Parse(c.baseURL)
+	if err != nil {
+		return "", fmt.Errorf("parse base URL: %w", err)
 	}
 
-	return cdpURL, nil
+	host := base.Hostname()
+	port := base.Port()
+	if port == "" {
+		switch base.Scheme {
+		case "https":
+			port = "443"
+		default:
+			port = "80"
+		}
+	}
+
+	// Build WebSocket scheme
+	wsScheme := "ws"
+	if base.Scheme == "https" {
+		wsScheme = "wss"
+	}
+
+	// Build full CDP WebSocket URL
+	cdpPath := profile.CDPUrl
+	if len(cdpPath) > 0 && cdpPath[0] == '/' {
+		cdpPath = cdpPath[1:] // remove leading slash
+	}
+
+	return fmt.Sprintf("%s://%s:%s/%s", wsScheme, host, port, cdpPath), nil
 }
 
 func (c *Client) do(ctx context.Context, method, path string, body any, result any) error {
