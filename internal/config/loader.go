@@ -47,7 +47,7 @@ func DefaultConfig() *Config {
 		},
 		Drivers: DriversConfig{
 			DefaultTimeout: 30,
-			Platforms:      make(map[string]any),
+			Platforms:      []string{"115"},
 		},
 		RateLimit: RateLimitConfig{
 			Enabled: false,

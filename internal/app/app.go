@@ -51,10 +51,14 @@ func Initialize(configPath string) (*App, func(), error) {
 	// 6. Driver registry
 	registry := drivers.NewRegistry(log)
 
-	// Register 115 driver (if cookie is configured)
-	if cookie, ok := cfg.Drivers.Platforms["115"]; ok {
-		if cookieStr, ok := cookie.(string); ok && cookieStr != "" {
-			registry.Register("115", pan115.NewFactory(cookieStr))
+	// Register drivers based on configuration
+	for _, platform := range cfg.Drivers.Platforms {
+		switch platform {
+		case "115":
+			registry.Register("115", pan115.NewFactory())
+		// Add more platforms here
+		// case "pikpak":
+		//     registry.Register("pikpak", pikpak.NewFactory())
 		}
 	}
 

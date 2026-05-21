@@ -11,7 +11,8 @@ cloak:
 
 drivers:
   default_timeout: 30
-  platforms: {}
+  platforms:
+    - "115"
 
 rate_limit:
   enabled: false

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/go-rod/rod"
 	"github.com/go-rod/rod/lib/proto"
@@ -68,4 +69,42 @@ func (c *Connection) Close() error {
 // Browser returns the underlying rod browser instance.
 func (c *Connection) Browser() *rod.Browser {
 	return c.browser
+}
+
+// GetCookies returns all cookies for the given domain.
+func (c *Connection) GetCookies(ctx context.Context, domain string) ([]*proto.NetworkCookie, error) {
+	// Get all cookies
+	result, err := proto.NetworkGetCookies{}.Call(c.browser)
+	if err != nil {
+		return nil, fmt.Errorf("get cookies: %w", err)
+	}
+
+	// Filter by domain if specified
+	if domain == "" {
+		return result.Cookies, nil
+	}
+
+	var filtered []*proto.NetworkCookie
+	for _, cookie := range result.Cookies {
+		if cookie.Domain == domain || cookie.Domain == "."+domain {
+			filtered = append(filtered, cookie)
+		}
+	}
+
+	return filtered, nil
+}
+
+// GetCookieString returns cookies as a string for the given domain.
+func (c *Connection) GetCookieString(ctx context.Context, domain string) (string, error) {
+	cookies, err := c.GetCookies(ctx, domain)
+	if err != nil {
+		return "", err
+	}
+
+	var parts []string
+	for _, cookie := range cookies {
+		parts = append(parts, cookie.Name+"="+cookie.Value)
+	}
+
+	return strings.Join(parts, ";"), nil
 }

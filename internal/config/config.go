@@ -21,8 +21,8 @@ type CloakConfig struct {
 }
 
 type DriversConfig struct {
-	DefaultTimeout int              `mapstructure:"default_timeout"` // 秒
-	Platforms      map[string]any   `mapstructure:"platforms"`      // 各平台特定配置
+	DefaultTimeout int      `mapstructure:"default_timeout"` // 秒
+	Platforms      []string `mapstructure:"platforms"`       // 启用的平台列表，如 ["115", "pikpak"]
 }
 
 type RateLimitConfig struct {
