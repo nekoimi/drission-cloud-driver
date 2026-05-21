@@ -5,7 +5,7 @@ import (
 
 	"gorm.io/gorm"
 
-	"github.com/nekoimi/go-project-template/internal/model"
+	"github.com/nekoimi/drission-cloud-driver/internal/model"
 )
 
 type UserRepository interface {

@@ -9,7 +9,7 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 
-	"github.com/nekoimi/go-project-template/internal/config"
+	"github.com/nekoimi/drission-cloud-driver/internal/config"
 )
 
 func NewPostgresDB(cfg config.DatabaseConfig, log *zap.Logger, serverMode string) (*gorm.DB, error) {

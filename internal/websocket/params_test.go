@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nekoimi/go-project-template/internal/config"
+	"github.com/nekoimi/drission-cloud-driver/internal/config"
 )
 
 func TestNewConnParams_defaults(t *testing.T) {

@@ -3,7 +3,7 @@ package scheduler
 import (
 	"go.uber.org/zap"
 
-	"github.com/nekoimi/go-project-template/internal/scheduler/jobs"
+	"github.com/nekoimi/drission-cloud-driver/internal/scheduler/jobs"
 )
 
 func (s *Scheduler) RegisterJobs() {

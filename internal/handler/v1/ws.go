@@ -1,7 +1,7 @@
 package v1
 
 import (
-	ws "github.com/nekoimi/go-project-template/internal/websocket"
+	ws "github.com/nekoimi/drission-cloud-driver/internal/websocket"
 )
 
 type WSHandler = ws.WSHandler

@@ -7,25 +7,25 @@ import (
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 
-	"github.com/nekoimi/go-project-template/internal/config"
-	"github.com/nekoimi/go-project-template/internal/handler"
-	"github.com/nekoimi/go-project-template/internal/infrastructure/database"
-	"github.com/nekoimi/go-project-template/internal/infrastructure/logger"
-	"github.com/nekoimi/go-project-template/internal/pkg/snowflake"
-	"github.com/nekoimi/go-project-template/internal/pkg/timeutil"
-	"github.com/nekoimi/go-project-template/internal/scheduler"
-	"github.com/nekoimi/go-project-template/internal/storage"
-	"github.com/nekoimi/go-project-template/internal/storage/local"
-	"github.com/nekoimi/go-project-template/internal/storage/minio"
-	ws "github.com/nekoimi/go-project-template/internal/websocket"
+	"github.com/nekoimi/drission-cloud-driver/internal/config"
+	"github.com/nekoimi/drission-cloud-driver/internal/handler"
+	"github.com/nekoimi/drission-cloud-driver/internal/infrastructure/database"
+	"github.com/nekoimi/drission-cloud-driver/internal/infrastructure/logger"
+	"github.com/nekoimi/drission-cloud-driver/internal/pkg/snowflake"
+	"github.com/nekoimi/drission-cloud-driver/internal/pkg/timeutil"
+	"github.com/nekoimi/drission-cloud-driver/internal/scheduler"
+	"github.com/nekoimi/drission-cloud-driver/internal/storage"
+	"github.com/nekoimi/drission-cloud-driver/internal/storage/local"
+	"github.com/nekoimi/drission-cloud-driver/internal/storage/minio"
+	ws "github.com/nekoimi/drission-cloud-driver/internal/websocket"
 )
 
 type App struct {
-	Engine   *gin.Engine
-	Config   *config.Config
-	Logger   *zap.Logger
-	DB       *gorm.DB
-	Storage  storage.FileStorage
+	Engine    *gin.Engine
+	Config    *config.Config
+	Logger    *zap.Logger
+	DB        *gorm.DB
+	Storage   storage.FileStorage
 	WSManager *ws.Manager
 	Scheduler *scheduler.Scheduler
 }

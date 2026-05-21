@@ -20,7 +20,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/nekoimi/go-project-template/internal/app"
+	"github.com/nekoimi/drission-cloud-driver/internal/app"
 )
 
 func main() {

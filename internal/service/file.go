@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/nekoimi/go-project-template/internal/storage"
+	"github.com/nekoimi/drission-cloud-driver/internal/storage"
 )
 
 type FileService interface {

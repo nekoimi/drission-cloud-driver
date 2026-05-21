@@ -8,8 +8,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"golang.org/x/time/rate"
 
-	"github.com/nekoimi/go-project-template/internal/pkg/errcode"
-	"github.com/nekoimi/go-project-template/internal/pkg/response"
+	"github.com/nekoimi/drission-cloud-driver/internal/pkg/errcode"
+	"github.com/nekoimi/drission-cloud-driver/internal/pkg/response"
 )
 
 // RateLimit 全局令牌桶限流中间件

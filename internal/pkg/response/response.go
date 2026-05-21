@@ -5,7 +5,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/nekoimi/go-project-template/internal/pkg/errcode"
+	"github.com/nekoimi/drission-cloud-driver/internal/pkg/errcode"
 )
 
 type APIResponse struct {

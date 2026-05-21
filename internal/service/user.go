@@ -6,10 +6,10 @@ import (
 
 	"gorm.io/gorm"
 
-	"github.com/nekoimi/go-project-template/internal/dto"
-	"github.com/nekoimi/go-project-template/internal/pkg/errcode"
-	"github.com/nekoimi/go-project-template/internal/pkg/idutil"
-	"github.com/nekoimi/go-project-template/internal/repository"
+	"github.com/nekoimi/drission-cloud-driver/internal/dto"
+	"github.com/nekoimi/drission-cloud-driver/internal/pkg/errcode"
+	"github.com/nekoimi/drission-cloud-driver/internal/pkg/idutil"
+	"github.com/nekoimi/drission-cloud-driver/internal/repository"
 )
 
 type UserService interface {

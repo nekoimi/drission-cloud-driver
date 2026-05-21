@@ -6,10 +6,10 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"github.com/nekoimi/go-project-template/internal/dto"
-	"github.com/nekoimi/go-project-template/internal/pkg/errcode"
-	"github.com/nekoimi/go-project-template/internal/pkg/response"
-	"github.com/nekoimi/go-project-template/internal/service"
+	"github.com/nekoimi/drission-cloud-driver/internal/dto"
+	"github.com/nekoimi/drission-cloud-driver/internal/pkg/errcode"
+	"github.com/nekoimi/drission-cloud-driver/internal/pkg/response"
+	"github.com/nekoimi/drission-cloud-driver/internal/service"
 )
 
 type AuthHandler struct {

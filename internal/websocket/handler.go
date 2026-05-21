@@ -8,8 +8,8 @@ import (
 	wslib "github.com/gorilla/websocket"
 	"go.uber.org/zap"
 
-	"github.com/nekoimi/go-project-template/internal/config"
-	"github.com/nekoimi/go-project-template/internal/pkg/jwtutil"
+	"github.com/nekoimi/drission-cloud-driver/internal/config"
+	"github.com/nekoimi/drission-cloud-driver/internal/pkg/jwtutil"
 )
 
 type WSHandler struct {

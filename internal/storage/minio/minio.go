@@ -10,9 +10,9 @@ import (
 	minioClient "github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
 
-	"github.com/nekoimi/go-project-template/internal/config"
-	"github.com/nekoimi/go-project-template/internal/pkg/snowflake"
-	"github.com/nekoimi/go-project-template/internal/storage"
+	"github.com/nekoimi/drission-cloud-driver/internal/config"
+	"github.com/nekoimi/drission-cloud-driver/internal/pkg/snowflake"
+	"github.com/nekoimi/drission-cloud-driver/internal/storage"
 )
 
 type minioStorage struct {

@@ -7,8 +7,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/nekoimi/go-project-template/internal/app"
-	"github.com/nekoimi/go-project-template/internal/scheduler"
+	"github.com/nekoimi/drission-cloud-driver/internal/app"
+	"github.com/nekoimi/drission-cloud-driver/internal/scheduler"
 )
 
 func main() {

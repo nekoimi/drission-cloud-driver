@@ -1,4 +1,4 @@
-module github.com/nekoimi/go-project-template
+module github.com/nekoimi/drission-cloud-driver
 
 go 1.25.0
 

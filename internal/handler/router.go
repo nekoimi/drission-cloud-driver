@@ -9,13 +9,13 @@ import (
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 
-	"github.com/nekoimi/go-project-template/internal/config"
-	v1 "github.com/nekoimi/go-project-template/internal/handler/v1"
-	"github.com/nekoimi/go-project-template/internal/handler/middleware"
-	"github.com/nekoimi/go-project-template/internal/repository"
-	"github.com/nekoimi/go-project-template/internal/service"
-	"github.com/nekoimi/go-project-template/internal/storage"
-	ws "github.com/nekoimi/go-project-template/internal/websocket"
+	"github.com/nekoimi/drission-cloud-driver/internal/config"
+	"github.com/nekoimi/drission-cloud-driver/internal/handler/middleware"
+	v1 "github.com/nekoimi/drission-cloud-driver/internal/handler/v1"
+	"github.com/nekoimi/drission-cloud-driver/internal/repository"
+	"github.com/nekoimi/drission-cloud-driver/internal/service"
+	"github.com/nekoimi/drission-cloud-driver/internal/storage"
+	ws "github.com/nekoimi/drission-cloud-driver/internal/websocket"
 )
 
 func SetupRouter(cfg *config.Config, logger *zap.Logger, db *gorm.DB, fileStorage storage.FileStorage, wsManager *ws.Manager) *gin.Engine {

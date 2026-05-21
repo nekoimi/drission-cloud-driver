@@ -2,7 +2,7 @@ package middleware
 
 import (
 	"github.com/gin-gonic/gin"
-	"github.com/nekoimi/go-project-template/internal/pkg/snowflake"
+	"github.com/nekoimi/drission-cloud-driver/internal/pkg/snowflake"
 )
 
 const RequestIDKey = "X-Request-ID"

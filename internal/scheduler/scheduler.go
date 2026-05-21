@@ -7,7 +7,7 @@ import (
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 
-	"github.com/nekoimi/go-project-template/internal/config"
+	"github.com/nekoimi/drission-cloud-driver/internal/config"
 )
 
 type Scheduler struct {

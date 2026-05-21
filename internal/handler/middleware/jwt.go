@@ -6,9 +6,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/nekoimi/go-project-template/internal/pkg/errcode"
-	"github.com/nekoimi/go-project-template/internal/pkg/jwtutil"
-	"github.com/nekoimi/go-project-template/internal/pkg/response"
+	"github.com/nekoimi/drission-cloud-driver/internal/pkg/errcode"
+	"github.com/nekoimi/drission-cloud-driver/internal/pkg/jwtutil"
+	"github.com/nekoimi/drission-cloud-driver/internal/pkg/response"
 )
 
 func JWTAuth(secret string) gin.HandlerFunc {

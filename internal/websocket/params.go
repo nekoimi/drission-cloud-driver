@@ -3,7 +3,7 @@ package websocket
 import (
 	"time"
 
-	"github.com/nekoimi/go-project-template/internal/config"
+	"github.com/nekoimi/drission-cloud-driver/internal/config"
 )
 
 // connParams 由配置推导，供 Upgrader 与 Client 使用；零值字段会使用与历史常量一致的默认。

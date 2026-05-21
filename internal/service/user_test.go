@@ -6,10 +6,10 @@ import (
 
 	"gorm.io/gorm"
 
-	"github.com/nekoimi/go-project-template/internal/model"
-	"github.com/nekoimi/go-project-template/internal/pkg/errcode"
-	"github.com/nekoimi/go-project-template/internal/pkg/idutil"
-	"github.com/nekoimi/go-project-template/internal/repository"
+	"github.com/nekoimi/drission-cloud-driver/internal/model"
+	"github.com/nekoimi/drission-cloud-driver/internal/pkg/errcode"
+	"github.com/nekoimi/drission-cloud-driver/internal/pkg/idutil"
+	"github.com/nekoimi/drission-cloud-driver/internal/repository"
 )
 
 type stubUserRepo struct {
