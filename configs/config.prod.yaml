@@ -1,50 +1,20 @@
 server:
   port: "8080"
   mode: release
-  # CORS/WebSocket 允许的来源，空则允许全部（开发模式）
-  # 生产环境应显式配置允许的域名列表
+  timezone: "Asia/Shanghai"
+  shutdown_timeout: 10
   allowed_origins:
     - "https://your-domain.com"
-    - "https://api.your-domain.com"
 
-database:
-  host: ${DATABASE_HOST}
-  port: ${DATABASE_PORT}
-  user: ${DATABASE_USER}
-  password: ${DATABASE_PASSWORD}
-  dbname: ${DATABASE_NAME}
-  sslmode: require
-  max_open_conns: 50
-  max_idle_conns: 20
-  conn_max_lifetime: 60
+cloak:
+  base_url: ${CLOAK_BASE_URL}
+  api_key: ${CLOAK_API_KEY}
 
-jwt:
-  secret: ${JWT_SECRET}
-  expire_hours: 24
+drivers:
+  default_timeout: 30
+  platforms: {}
 
-scheduler:
+rate_limit:
   enabled: true
-  timezone: "Asia/Shanghai"
-
-websocket:
-  enabled: true
-  read_buffer_size: 2048
-  write_buffer_size: 2048
-  ping_period: 30s
-  write_wait: 10s
-  read_wait: 60s
-  max_message_size: 10240
-
-storage:
-  driver: "minio"
-  base_url: "https://your-domain.com"
-  local:
-    upload_dir: "./uploads"
-    max_file_size: 20
-  minio:
-    endpoint: "minio:9000"
-    access_key: ${MINIO_ACCESS_KEY}
-    secret_key: ${MINIO_SECRET_KEY}
-    bucket: "go-template"
-    use_ssl: false
-    public_url: "https://minio.your-domain.com"
+  rps: 100
+  burst: 200

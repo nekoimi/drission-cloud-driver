@@ -7,8 +7,7 @@ RUN go mod download
 
 COPY . .
 
-ARG TARGET=cmd/server
-RUN CGO_ENABLED=0 GOOS=linux go build -o /app/bin/app ./${TARGET}
+RUN CGO_ENABLED=0 GOOS=linux go build -o /app/bin/server cmd/server/main.go
 
 FROM alpine:3.20
 
@@ -16,10 +15,10 @@ RUN apk --no-cache add ca-certificates tzdata
 
 WORKDIR /app
 
-COPY --from=builder /app/bin/app /app/app
+COPY --from=builder /app/bin/server /app/server
 COPY --from=builder /app/configs /app/configs
 
 EXPOSE 8080
 
-ENTRYPOINT ["/app/app"]
+ENTRYPOINT ["/app/server"]
 CMD ["--config", "configs/config.prod.yaml"]

@@ -5,29 +5,23 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
-	"gorm.io/gorm"
 
+	"github.com/nekoimi/drission-cloud-driver/internal/browser"
+	"github.com/nekoimi/drission-cloud-driver/internal/cloak"
 	"github.com/nekoimi/drission-cloud-driver/internal/config"
+	"github.com/nekoimi/drission-cloud-driver/internal/drivers"
+	"github.com/nekoimi/drission-cloud-driver/internal/drivers/pan115"
 	"github.com/nekoimi/drission-cloud-driver/internal/handler"
-	"github.com/nekoimi/drission-cloud-driver/internal/infrastructure/database"
 	"github.com/nekoimi/drission-cloud-driver/internal/infrastructure/logger"
-	"github.com/nekoimi/drission-cloud-driver/internal/pkg/snowflake"
 	"github.com/nekoimi/drission-cloud-driver/internal/pkg/timeutil"
-	"github.com/nekoimi/drission-cloud-driver/internal/scheduler"
-	"github.com/nekoimi/drission-cloud-driver/internal/storage"
-	"github.com/nekoimi/drission-cloud-driver/internal/storage/local"
-	"github.com/nekoimi/drission-cloud-driver/internal/storage/minio"
-	ws "github.com/nekoimi/drission-cloud-driver/internal/websocket"
 )
 
 type App struct {
-	Engine    *gin.Engine
-	Config    *config.Config
-	Logger    *zap.Logger
-	DB        *gorm.DB
-	Storage   storage.FileStorage
-	WSManager *ws.Manager
-	Scheduler *scheduler.Scheduler
+	Engine         *gin.Engine
+	Config         *config.Config
+	Logger         *zap.Logger
+	BrowserManager *browser.Manager
+	Registry       *drivers.Registry
 }
 
 func Initialize(configPath string) (*App, func(), error) {
@@ -42,64 +36,43 @@ func Initialize(configPath string) (*App, func(), error) {
 		return nil, nil, fmt.Errorf("failed to set timezone: %w", err)
 	}
 
-	// 3. Snowflake
-	if err := snowflake.Init(cfg.Snowflake.NodeID); err != nil {
-		return nil, nil, fmt.Errorf("failed to init snowflake: %w", err)
-	}
-
-	// 4. Logger
+	// 3. Logger
 	log, err := logger.NewLogger(cfg.Server.Mode)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create logger: %w", err)
 	}
 
-	// 5. Database
-	db, err := database.NewPostgresDB(cfg.Database, log, cfg.Server.Mode)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to connect database: %w", err)
-	}
+	// 4. CloakBrowser client
+	cloakClient := cloak.NewClient(cfg.Cloak, log)
 
-	// 6. Storage
-	var fileStorage storage.FileStorage
-	switch cfg.Storage.Driver {
-	case "minio":
-		fileStorage, err = minio.New(cfg.Storage)
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to create minio storage: %w", err)
+	// 5. Browser manager
+	browserMgr := browser.NewManager(cloakClient, log)
+
+	// 6. Driver registry
+	registry := drivers.NewRegistry(log)
+
+	// Register 115 driver (if cookie is configured)
+	if cookie, ok := cfg.Drivers.Platforms["115"]; ok {
+		if cookieStr, ok := cookie.(string); ok && cookieStr != "" {
+			registry.Register("115", pan115.NewFactory(cookieStr))
 		}
-	default:
-		fileStorage = local.New(cfg.Storage)
 	}
 
-	// 7. WebSocket manager
-	wsManager := ws.NewManager(log)
-
-	// 8. Setup router
-	router := handler.SetupRouter(cfg, log, db, fileStorage, wsManager)
-
-	// 9. Scheduler (optional)
-	var sched *scheduler.Scheduler
-	if cfg.Scheduler.Enabled {
-		sched = scheduler.New(cfg.Scheduler, log, db)
-		sched.RegisterJobs()
-	}
+	// 7. Setup router
+	router := handler.SetupRouter(cfg, log, browserMgr, registry)
 
 	app := &App{
-		Engine:    router,
-		Config:    cfg,
-		Logger:    log,
-		DB:        db,
-		Storage:   fileStorage,
-		WSManager: wsManager,
-		Scheduler: sched,
+		Engine:         router,
+		Config:         cfg,
+		Logger:         log,
+		BrowserManager: browserMgr,
+		Registry:       registry,
 	}
 
 	cleanup := func() {
 		log.Info("cleaning up resources")
-		if sqlDB, err := db.DB(); err == nil {
-			if cerr := sqlDB.Close(); cerr != nil {
-				log.Warn("failed to close database", zap.Error(cerr))
-			}
+		if err := browserMgr.Shutdown(); err != nil {
+			log.Warn("failed to shutdown browser manager", zap.Error(err))
 		}
 		_ = log.Sync()
 	}
