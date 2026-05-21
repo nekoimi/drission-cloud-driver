@@ -1,0 +1,35 @@
+# https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+#
+# 需要跳过某依赖的 PR 时，在 gomod 条目下增加 ignore，例如：
+#   ignore:
+#     - dependency-name: "github.com/gin-gonic/gin"
+#       update-types: ["version-update:semver-major"]
+version: 2
+updates:
+  - package-ecosystem: "gomod"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    groups:
+      # minor + patch 合并为一条 PR；major 仍单独开 PR
+      go-nonbreaking:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+        exclude-patterns:
+          # 单次 diff 常较大，单独 PR 便于审查
+          - "google.golang.org/protobuf"
+          - "google.golang.org/grpc"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      github-actions:
+        patterns:
+          - "*"

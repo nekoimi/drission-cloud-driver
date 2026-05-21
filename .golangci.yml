@@ -1,0 +1,35 @@
+# https://golangci-lint.run/docs/configuration/file/
+version: "2"
+
+run:
+  timeout: 5m
+  modules-download-mode: readonly
+
+linters:
+  default: standard
+
+  disable:
+    # 模板项目逐步收紧；以下在标准集里偏吵或偏风格，先关掉
+    - exhaustruct
+    - depguard
+    - ireturn
+    - tagliatelle
+    - varnamelen
+    - wrapcheck
+    - wsl
+    - funlen
+    - gocognit
+    - gocyclo
+    - nestif
+    - lll
+    - testifylint
+
+  settings:
+    revive:
+      rules:
+        - name: unused-parameter
+          disabled: true
+
+  exclusions:
+    paths:
+      - docs

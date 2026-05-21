@@ -1,0 +1,57 @@
+server:
+  port: "8080"
+  mode: debug
+  timezone: "Asia/Shanghai"
+  shutdown_timeout: 10
+
+database:
+  host: localhost
+  port: "5432"
+  user: postgres
+  password: postgres
+  dbname: go_template
+  sslmode: disable
+  max_open_conns: 25
+  max_idle_conns: 10
+  conn_max_lifetime: 30
+
+jwt:
+  secret: "change-me-in-production"
+  expire_hours: 72
+
+snowflake:
+  node_id: 1
+
+rate_limit:
+  enabled: false
+  rps: 100
+  burst: 200
+
+scheduler:
+  enabled: false
+  timezone: "Asia/Shanghai"
+
+websocket:
+  enabled: false
+  read_buffer_size: 1024
+  write_buffer_size: 1024
+  ping_period: 60s
+  write_wait: 10s
+  read_wait: 60s
+  max_message_size: 5120
+
+storage:
+  driver: "local"
+  base_url: "http://localhost:8080/uploads"
+  local:
+    upload_dir: "./uploads"
+    max_file_size: 10
+    allowed_exts: [".jpg", ".jpeg", ".png", ".gif", ".webp", ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".txt", ".zip"]
+    allowed_mimes: ["image/jpeg", "image/png", "image/gif", "image/webp", "application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "text/plain", "application/zip"]
+  minio:
+    endpoint: "localhost:9000"
+    access_key: "minioadmin"
+    secret_key: "minioadmin"
+    bucket: "go-template"
+    use_ssl: false
+    public_url: "http://localhost:9000"
