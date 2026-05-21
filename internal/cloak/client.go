@@ -63,7 +63,8 @@ func (c *Client) StopProfile(ctx context.Context, profileID string) error {
 	return c.do(ctx, http.MethodPost, path, nil, nil)
 }
 
-// GetCDPEndpoint returns the CDP WebSocket endpoint for a profile.
+// GetCDPEndpoint returns the CDP HTTP endpoint for a profile.
+// go-rod will handle the WebSocket upgrade internally.
 func (c *Client) GetCDPEndpoint(ctx context.Context, profileID string) (string, error) {
 	profile, err := c.GetProfile(ctx, profileID)
 	if err != nil {
@@ -73,15 +74,10 @@ func (c *Client) GetCDPEndpoint(ctx context.Context, profileID string) (string, 
 		return "", fmt.Errorf("profile %s has no CDP endpoint, status: %s", profileID, profile.Status)
 	}
 
-	// If CDPUrl is a relative path, convert to full URL
+	// If CDPUrl is a relative path, convert to full HTTP URL
 	cdpURL := profile.CDPUrl
 	if len(cdpURL) > 0 && cdpURL[0] == '/' {
-		// Convert http(s)://host to ws(s)://host
-		wsBase := c.baseURL
-		if len(wsBase) > 4 && wsBase[:4] == "http" {
-			wsBase = "ws" + wsBase[4:]
-		}
-		cdpURL = wsBase + cdpURL
+		cdpURL = c.baseURL + cdpURL
 	}
 
 	return cdpURL, nil
