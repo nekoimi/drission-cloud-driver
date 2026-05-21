@@ -34,21 +34,21 @@ func NewClient(cfg config.CloakConfig, logger *zap.Logger) *Client {
 
 // ListProfiles returns all browser profiles.
 func (c *Client) ListProfiles(ctx context.Context) ([]BrowserProfile, error) {
-	var resp ListProfilesResponse
-	if err := c.do(ctx, http.MethodGet, "/api/profiles", nil, &resp); err != nil {
+	var profiles []BrowserProfile
+	if err := c.do(ctx, http.MethodGet, "/api/profiles", nil, &profiles); err != nil {
 		return nil, err
 	}
-	return resp.Profiles, nil
+	return profiles, nil
 }
 
 // GetProfile returns a specific browser profile.
 func (c *Client) GetProfile(ctx context.Context, profileID string) (*BrowserProfile, error) {
-	var resp ProfileResponse
+	var profile BrowserProfile
 	path := fmt.Sprintf("/api/profiles/%s", profileID)
-	if err := c.do(ctx, http.MethodGet, path, nil, &resp); err != nil {
+	if err := c.do(ctx, http.MethodGet, path, nil, &profile); err != nil {
 		return nil, err
 	}
-	return &resp.Profile, nil
+	return &profile, nil
 }
 
 // StartProfile starts a browser profile.
@@ -70,9 +70,21 @@ func (c *Client) GetCDPEndpoint(ctx context.Context, profileID string) (string, 
 		return "", err
 	}
 	if profile.CDPUrl == "" {
-		return "", fmt.Errorf("profile %s has no CDP endpoint", profileID)
+		return "", fmt.Errorf("profile %s has no CDP endpoint, status: %s", profileID, profile.Status)
 	}
-	return profile.CDPUrl, nil
+
+	// If CDPUrl is a relative path, convert to full URL
+	cdpURL := profile.CDPUrl
+	if len(cdpURL) > 0 && cdpURL[0] == '/' {
+		// Convert http(s)://host to ws(s)://host
+		wsBase := c.baseURL
+		if len(wsBase) > 4 && wsBase[:4] == "http" {
+			wsBase = "ws" + wsBase[4:]
+		}
+		cdpURL = wsBase + cdpURL
+	}
+
+	return cdpURL, nil
 }
 
 func (c *Client) do(ctx context.Context, method, path string, body any, result any) error {
