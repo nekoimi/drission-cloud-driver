@@ -20,7 +20,7 @@ drission-cloud-driver 通过 CDP（Chrome DevTools Protocol）连接真实浏览
 | 组件 | 说明 |
 |---|---|
 | [Gin](https://github.com/gin-gonic/gin) | HTTP 框架 |
-| [go-rod/rod](https://github.com/go-rod/rod) | CDP 浏览器自动化 |
+| [playwright-go](https://github.com/playwright-community/playwright-go) | CDP 浏览器自动化 |
 | [115driver](https://github.com/SheltonZhu/115driver) | 115 网盘 SDK |
 | [Zap](https://github.com/uber-go/zap) | 结构化日志 |
 | [Viper](https://github.com/spf13/viper) | 配置管理 |
