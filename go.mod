@@ -3,7 +3,7 @@ module github.com/nekoimi/drission-cloud-driver
 go 1.25.0
 
 require (
-	github.com/SheltonZhu/115driver v1.3.2
+	github.com/SheltonZhu/115driver v1.3.3
 	github.com/gin-gonic/gin v1.12.0
 	github.com/playwright-community/playwright-go v0.5700.1
 	github.com/spf13/viper v1.21.0
