@@ -1,0 +1,307 @@
+package v1
+
+import (
+	"net/http"
+
+	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
+
+	"github.com/nekoimi/drission-cloud-driver/internal/browser"
+	"github.com/nekoimi/drission-cloud-driver/internal/drivers"
+)
+
+// DriverHandler handles driver API endpoints.
+type DriverHandler struct {
+	registry  *drivers.Registry
+	browserMgr *browser.Manager
+	logger    *zap.Logger
+}
+
+// NewDriverHandler creates a new driver handler.
+func NewDriverHandler(registry *drivers.Registry, browserMgr *browser.Manager, logger *zap.Logger) *DriverHandler {
+	return &DriverHandler{
+		registry:   registry,
+		browserMgr: browserMgr,
+		logger:     logger,
+	}
+}
+
+// getDriver extracts the platform from the URL and returns the driver.
+func (h *DriverHandler) getDriver(c *gin.Context) (drivers.Driver, string, error) {
+	platform := c.Param("platform")
+	profileID := c.GetHeader("X-Profile-ID")
+	if profileID == "" {
+		profileID = c.Query("profile_id")
+	}
+
+	driver, err := h.registry.Get(platform, h.browserMgr)
+	if err != nil {
+		return nil, "", err
+	}
+
+	return driver, profileID, nil
+}
+
+// GetCapabilities returns the capabilities of a driver.
+func (h *DriverHandler) GetCapabilities(c *gin.Context) {
+	platform := c.Param("platform")
+	driver, err := h.registry.Get(platform, h.browserMgr)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "driver not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"platform":     platform,
+		"capabilities": driver.Capabilities(),
+	})
+}
+
+// AddOfflineTask adds an offline download task.
+func (h *DriverHandler) AddOfflineTask(c *gin.Context) {
+	driver, profileID, err := h.getDriver(c)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+
+	var req drivers.AddTaskRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	task, err := driver.AddOfflineTask(c.Request.Context(), profileID, &req)
+	if err != nil {
+		h.logger.Error("add offline task failed", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, task)
+}
+
+// GetOfflineTask returns the status of an offline download task.
+func (h *DriverHandler) GetOfflineTask(c *gin.Context) {
+	driver, profileID, err := h.getDriver(c)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+
+	taskID := c.Param("id")
+	task, err := driver.QueryOfflineTask(c.Request.Context(), profileID, taskID)
+	if err != nil {
+		h.logger.Error("query offline task failed", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, task)
+}
+
+// RemoveOfflineTask removes an offline download task.
+func (h *DriverHandler) RemoveOfflineTask(c *gin.Context) {
+	driver, profileID, err := h.getDriver(c)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+
+	taskID := c.Param("id")
+	if err := driver.RemoveOfflineTask(c.Request.Context(), profileID, taskID); err != nil {
+		h.logger.Error("remove offline task failed", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "removed"})
+}
+
+// ListOfflineTasks lists all offline download tasks.
+func (h *DriverHandler) ListOfflineTasks(c *gin.Context) {
+	driver, profileID, err := h.getDriver(c)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+
+	tasks, err := driver.ListOfflineTasks(c.Request.Context(), profileID)
+	if err != nil {
+		h.logger.Error("list offline tasks failed", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"tasks": tasks})
+}
+
+// Mkdir creates a new directory.
+func (h *DriverHandler) Mkdir(c *gin.Context) {
+	driver, profileID, err := h.getDriver(c)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+
+	var req struct {
+		ParentPath string `json:"parent_path"`
+		Name       string `json:"name" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if err := driver.Mkdir(c.Request.Context(), profileID, req.ParentPath, req.Name); err != nil {
+		h.logger.Error("mkdir failed", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "created"})
+}
+
+// Remove removes a file or directory.
+func (h *DriverHandler) Remove(c *gin.Context) {
+	driver, profileID, err := h.getDriver(c)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+
+	var req struct {
+		Path string `json:"path" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if err := driver.Remove(c.Request.Context(), profileID, req.Path); err != nil {
+		h.logger.Error("remove failed", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "removed"})
+}
+
+// Move moves a file or directory.
+func (h *DriverHandler) Move(c *gin.Context) {
+	driver, profileID, err := h.getDriver(c)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+
+	var req struct {
+		Src string `json:"src" binding:"required"`
+		Dst string `json:"dst" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if err := driver.Move(c.Request.Context(), profileID, req.Src, req.Dst); err != nil {
+		h.logger.Error("move failed", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "moved"})
+}
+
+// Rename renames a file or directory.
+func (h *DriverHandler) Rename(c *gin.Context) {
+	driver, profileID, err := h.getDriver(c)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+
+	var req struct {
+		Path    string `json:"path" binding:"required"`
+		NewName string `json:"new_name" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if err := driver.Rename(c.Request.Context(), profileID, req.Path, req.NewName); err != nil {
+		h.logger.Error("rename failed", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "renamed"})
+}
+
+// List lists files and directories.
+func (h *DriverHandler) List(c *gin.Context) {
+	driver, profileID, err := h.getDriver(c)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+
+	dirPath := c.Query("path")
+	files, err := driver.List(c.Request.Context(), profileID, dirPath)
+	if err != nil {
+		h.logger.Error("list failed", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"files": files})
+}
+
+// Search searches for files.
+func (h *DriverHandler) Search(c *gin.Context) {
+	driver, profileID, err := h.getDriver(c)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+
+	keyword := c.Query("keyword")
+	if keyword == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "keyword is required"})
+		return
+	}
+
+	files, err := driver.Search(c.Request.Context(), profileID, keyword)
+	if err != nil {
+		h.logger.Error("search failed", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"files": files})
+}
+
+// GetDownloadURL returns the download URL for a file.
+func (h *DriverHandler) GetDownloadURL(c *gin.Context) {
+	driver, profileID, err := h.getDriver(c)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+
+	path := c.Query("path")
+	if path == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "path is required"})
+		return
+	}
+
+	url, err := driver.GetDownloadURL(c.Request.Context(), profileID, path)
+	if err != nil {
+		h.logger.Error("get download URL failed", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"url": url})
+}

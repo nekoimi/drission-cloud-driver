@@ -1,132 +1,179 @@
-# Go Template
+# drission-cloud-driver
 
-基于 Go 的后端项目模板，集成常用组件，开箱即用。
+Browser-based Cloud Storage Driver Middleware — 基于浏览器自动化的云盘驱动中间件。
+
+## 项目简介
+
+drission-cloud-driver 通过 CDP（Chrome DevTools Protocol）连接真实浏览器，直接操作云盘网页完成各种云存储操作。核心理念：**Browser is the API**。
+
+### 支持的云盘平台
+
+| 平台 | 状态 | 说明 |
+|---|---|---|
+| 115 网盘 | ✅ 已实现 | 离线下载、文件管理、搜索 |
+| PikPak | 🔜 计划中 | - |
+| 夸克网盘 | 🔜 计划中 | - |
+| 迅雷云盘 | 🔜 计划中 | - |
 
 ## 技术栈
 
 | 组件 | 说明 |
 |---|---|
 | [Gin](https://github.com/gin-gonic/gin) | HTTP 框架 |
-| [GORM](https://gorm.io/) | ORM |
-| [PostgreSQL](https://www.postgresql.org/) | 数据库 |
+| [playwright-go](https://github.com/playwright-community/playwright-go) | CDP 浏览器自动化 |
+| [115driver](https://github.com/SheltonZhu/115driver) | 115 网盘 SDK |
 | [Zap](https://github.com/uber-go/zap) | 结构化日志 |
 | [Viper](https://github.com/spf13/viper) | 配置管理 |
-| [golang-jwt](https://github.com/golang-jwt/jwt) | JWT 认证 |
-| [gorilla/websocket](https://github.com/gorilla/websocket) | WebSocket |
-| [robfig/cron](https://github.com/robfig/cron) | 定时任务 |
-| [snowflake](https://github.com/bwmarrin/snowflake) | 分布式 ID |
-| [gin-swagger](https://github.com/swaggo/gin-swagger) | API 文档 |
-| [MinIO](https://min.io/) | 对象存储 (可选) |
+| [CloakBrowser-Manager](https://github.com/CloakHQ/CloakBrowser-Manager) | 浏览器实例管理 |
 
 ## 项目结构
 
 ```
 ├── cmd/
-│   ├── server/main.go          # HTTP 服务入口
-│   └── scheduler/main.go       # 独立定时任务入口
-├── configs/                    # 配置文件
-├── deployments/                # Dockerfile & docker-compose
-├── docs/                       # Swagger 文档
+│   └── server/main.go              # HTTP 服务入口
+├── configs/                        # 配置文件
+├── deployments/                    # Dockerfile & docker-compose
 ├── internal/
-│   ├── app/                    # 应用初始化
-│   ├── config/                 # 配置结构与加载
-│   ├── dto/                    # 请求/响应 DTO
+│   ├── app/                        # 应用初始化
+│   ├── browser/                    # CDP 浏览器连接层
+│   │   ├── connection.go           # 单个 CDP 连接封装
+│   │   ├── manager.go              # 浏览器实例管理
+│   │   └── types.go                # 类型定义
+│   ├── cloak/                      # CloakBrowser-Manager 客户端
+│   │   ├── client.go               # HTTP 客户端
+│   │   └── types.go                # API 响应结构
+│   ├── config/                     # 配置结构与加载
+│   ├── drivers/                    # Driver 抽象层
+│   │   ├── driver.go               # Driver 接口定义
+│   │   ├── types.go                # 统一数据类型
+│   │   ├── registry.go             # Driver 注册表
+│   │   ├── base/                   # 基础 Driver 实现
+│   │   └── pan115/                 # 115 网盘 Driver
 │   ├── handler/
-│   │   ├── middleware/         # 中间件 (CORS, JWT, 限流, 日志, Recovery, RequestID)
-│   │   └── v1/                 # API Handler
-│   ├── infrastructure/         # 基础设施 (数据库, 日志)
-│   ├── model/                  # GORM 数据模型
-│   ├── pkg/
-│   │   ├── errcode/            # 业务错误码
-│   │   ├── response/           # 统一响应格式
-│   │   ├── snowflake/          # ID 生成器
-│   │   ├── idutil/             # 雪花 ID 字符串编解码 (API 边界)
-│   │   └── timeutil/           # 时区与时间类型
-│   ├── repository/             # 数据访问层
-│   ├── scheduler/              # 定时任务
-│   ├── service/                # 业务逻辑层
-│   ├── storage/                # 文件存储 (local / minio)
-│   └── websocket/              # WebSocket (Hub 模式)
-├── migrations/                 # 数据库迁移脚本
-├── docker-compose.yml          # 开发基础设施 (PG + MinIO)
+│   │   ├── middleware/             # 中间件 (CORS, 限流, 日志, Recovery, RequestID)
+│   │   └── v1/                     # API Handler
+│   │       ├── driver.go           # Driver API
+│   │       ├── profile.go          # 浏览器 Profile 管理
+│   │       └── system.go           # 系统信息
+│   ├── infrastructure/
+│   │   └── logger/                 # 日志
+│   └── pkg/
+│       ├── errcode/                # 业务错误码
+│       ├── response/               # 统一响应格式
+│       └── timeutil/               # 时区与时间类型
 ├── Makefile
 └── go.mod
 ```
 
 ## 快速开始
 
-### 1. 启动开发基础设施
+### 1. 部署 CloakBrowser-Manager
 
-```bash
-make dev-up    # 启动 PostgreSQL + MinIO
+CloakBrowser-Manager 负责管理浏览器实例，请参考 [官方文档](https://github.com/CloakHQ/CloakBrowser-Manager) 进行部署。
+
+### 2. 配置
+
+编辑 `configs/config.dev.yaml`：
+
+```yaml
+server:
+  port: "8080"
+  mode: debug
+  timezone: "Asia/Shanghai"
+
+cloak:
+  base_url: "http://localhost:3000"  # CloakBrowser-Manager 地址
+
+drivers:
+  default_timeout: 30
+  platforms:
+    - "115"  # 启用 115 网盘
 ```
-
-### 2. 运行数据库迁移
-
-```bash
-make migrate-up
-```
-
-请**按文件名顺序执行全部迁移**（`migrations/` 下脚本可能包含破坏性变更，例如用户表结构重建）；不要只执行部分迁移以免与当前模型不一致。
 
 ### 3. 启动服务
 
 ```bash
-make run       # HTTP 服务 http://localhost:8080
+make run
 ```
 
-定时任务可独立运行：
+### 4. 使用流程
 
-```bash
-make run-scheduler
-```
-
-## 配置
-
-配置文件位于 `configs/`，通过 `--config` 参数指定。支持环境变量覆盖：
-
-| 环境变量 | 对应配置 |
-|---|---|
-| `DATABASE_HOST` | database.host |
-| `DATABASE_PORT` | database.port |
-| `DATABASE_USER` | database.user |
-| `DATABASE_PASSWORD` | database.password |
-| `DATABASE_NAME` | database.dbname |
-| `JWT_SECRET` | jwt.secret |
-| `TZ` | server.timezone |
-| `SNOWFLAKE_NODE_ID` | snowflake.node_id |
-| `MINIO_ACCESS_KEY` | storage.minio.access_key |
-| `MINIO_SECRET_KEY` | storage.minio.secret_key |
-| `MINIO_ENDPOINT` | storage.minio.endpoint |
-| `MINIO_PUBLIC_URL` | storage.minio.public_url |
-| `MINIO_BUCKET` | storage.minio.bucket |
-
-生产使用的 `configs/config.prod.yaml` 中等占位符（如 `${MINIO_ACCESS_KEY}`）不会被自动展开，需通过上表环境变量覆盖，或在 YAML 中直接写最终值。
-
-多实例部署时，请为每个实例设置不同的 `SNOWFLAKE_NODE_ID`，避免雪花 ID 冲突。
-
-数据库主键仍为 `bigint`，但 **JSON API 中的用户 ID 一律为十进制字符串**（DTO 字段类型为 `string`），避免 JavaScript `Number` 对大整数精度丢失；前端请按字符串传递与展示，不要 `parseInt` / `Number()` 后再回传。
-
-设置 `websocket.enabled: true` 后才会注册 `/ws/v1/chat` 并启动 WebSocket 管理循环；同一配置块中的 buffer、读写超时、`max_message_size`、ping 间隔会应用于连接。
-
-当配置了 `server.allowed_origins` 时，**未携带 `Origin` 头的请求**（如 curl / 服务端调用）不会因 CORS 白名单被拦成 403；浏览器跨站请求仍会按白名单校验。
-
-完整配置项见 `configs/config.dev.yaml`。
+1. 在 CloakBrowser-Manager 中创建浏览器 Profile
+2. 启动 Profile，在浏览器中登录 115 账号
+3. 调用 API 时通过 `X-Profile-ID` Header 指定 Profile
 
 ## API
 
-启动后访问 Swagger UI：`http://localhost:8080/swagger/index.html`
+### 系统接口
 
-| 方法 | 路径 | 认证 | 说明 |
-|---|---|---|---|
-| GET | `/health` | - | 存活检查 |
-| GET | `/ready` | - | 就绪检查 (DB ping) |
-| POST | `/v1/auth/register` | - | 用户注册 |
-| POST | `/v1/auth/login` | - | 用户登录 |
-| GET | `/v1/users/profile` | JWT | 获取当前用户信息 |
-| POST | `/v1/upload/single` | JWT | 上传单个文件 |
-| POST | `/v1/upload/multiple` | JWT | 上传多个文件 |
-| GET | `/ws/v1/chat` | JWT | WebSocket；推荐：`Sec-WebSocket-Protocol: access_token, <jwt>`（与 `new WebSocket(url, ['access_token', token])` 一致）；兼容查询参数 `?token=` |
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/health` | 健康检查 |
+| GET | `/drivers` | 列出所有 Driver |
+
+### 浏览器 Profile 管理
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/profiles` | 列出所有 Profile |
+| GET | `/profiles/:id` | 获取 Profile 详情 |
+| POST | `/profiles/:id/start` | 启动 Profile |
+| POST | `/profiles/:id/stop` | 停止 Profile |
+
+### Driver API
+
+所有 Driver API 都需要通过 `X-Profile-ID` Header 指定浏览器 Profile。
+
+#### 能力查询
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/drivers/:platform/capabilities` | 获取 Driver 能力 |
+
+#### 离线下载
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| POST | `/drivers/:platform/offline/add` | 提交离线下载任务 |
+| GET | `/drivers/:platform/offline/tasks` | 列出所有任务 |
+| GET | `/drivers/:platform/offline/tasks/:id` | 查询任务状态 |
+| DELETE | `/drivers/:platform/offline/tasks/:id` | 删除任务 |
+
+#### 文件系统
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| POST | `/drivers/:platform/fs/mkdir` | 创建目录 |
+| DELETE | `/drivers/:platform/fs/remove` | 删除文件/目录 |
+| POST | `/drivers/:platform/fs/move` | 移动文件/目录 |
+| POST | `/drivers/:platform/fs/rename` | 重命名 |
+| GET | `/drivers/:platform/fs/list` | 列出目录内容 |
+| GET | `/drivers/:platform/fs/search` | 搜索文件 |
+
+#### 媒体
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/drivers/:platform/media/url` | 获取下载链接 |
+
+### 请求示例
+
+```bash
+# 列出 115 网盘根目录
+curl -H "X-Profile-ID: your-profile-id" \
+  "http://localhost:8080/drivers/115/fs/list?path=/"
+
+# 提交离线下载任务
+curl -X POST \
+  -H "X-Profile-ID: your-profile-id" \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://example.com/file.zip"}' \
+  "http://localhost:8080/drivers/115/offline/add"
+
+# 搜索文件
+curl -H "X-Profile-ID: your-profile-id" \
+  "http://localhost:8080/drivers/115/fs/search?keyword=movie"
+```
 
 ### 统一响应格式
 
@@ -139,19 +186,30 @@ make run-scheduler
 }
 ```
 
-错误时 `code` 为业务错误码（如 40100=未授权，40401=用户不存在），`error` 包含错误详情。
+错误时 `code` 为业务错误码，`error` 包含错误详情。
+
+## 配置
+
+配置文件位于 `configs/`，通过 `--config` 参数指定。支持环境变量覆盖：
+
+| 环境变量 | 对应配置 | 说明 |
+|---|---|---|
+| `CLOAK_BASE_URL` | cloak.base_url | CloakBrowser-Manager 地址 |
+| `CLOAK_API_KEY` | cloak.api_key | CloakBrowser API Key (可选) |
+| `TZ` | server.timezone | 时区 |
+
+完整配置项见 `configs/config.dev.yaml`。
 
 ## 构建与部署
 
 ```bash
 make build         # 编译到 bin/
-make swagger       # 重新生成 Swagger 文档
 make test          # 运行测试
-make lint          # golangci-lint（需已安装：go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest）
+make lint          # golangci-lint
 
 make docker-build  # 构建 Docker 镜像
-make docker-up     # 启动完整部署 (app + scheduler + PG + MinIO)
-make docker-down   # 停止
+make docker-up     # 启动服务
+make docker-down   # 停止服务
 ```
 
 ## License
