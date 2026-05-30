@@ -19,11 +19,11 @@ func (fakeDriver) Capabilities() DriverCapabilities {
 	return DriverCapabilities{Search: true}
 }
 
-func (fakeDriver) AddOfflineTask(context.Context, string, *AddTaskRequest) (*TaskStatus, error) {
+func (fakeDriver) AddOfflineTask(context.Context, string, *AddTaskRequest) (*OfflineTask, error) {
 	return nil, nil
 }
 
-func (fakeDriver) QueryOfflineTask(context.Context, string, string) (*TaskStatus, error) {
+func (fakeDriver) QueryOfflineTask(context.Context, string, string) (*OfflineTask, error) {
 	return nil, nil
 }
 
@@ -31,7 +31,7 @@ func (fakeDriver) RemoveOfflineTask(context.Context, string, string) error {
 	return nil
 }
 
-func (fakeDriver) ListOfflineTasks(context.Context, string) ([]TaskStatus, error) {
+func (fakeDriver) ListOfflineTasks(context.Context, string) (*OfflineTaskList, error) {
 	return nil, nil
 }
 

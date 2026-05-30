@@ -97,7 +97,7 @@ func (d *Driver) getClient(ctx context.Context, profileID string) (*driver.Pan11
 }
 
 // AddOfflineTask adds an offline download task.
-func (d *Driver) AddOfflineTask(ctx context.Context, profileID string, req *drivers.AddTaskRequest) (*drivers.TaskStatus, error) {
+func (d *Driver) AddOfflineTask(ctx context.Context, profileID string, req *drivers.AddTaskRequest) (*drivers.OfflineTask, error) {
 	client, err := d.getClient(ctx, profileID)
 	if err != nil {
 		return nil, err
@@ -121,14 +121,16 @@ func (d *Driver) AddOfflineTask(ctx context.Context, profileID string, req *driv
 		return nil, fmt.Errorf("no task created")
 	}
 
-	return &drivers.TaskStatus{
-		TaskID: hashes[0],
-		Status: "pending",
+	return &drivers.OfflineTask{
+		TaskID:         hashes[0],
+		ProviderTaskID: hashes[0],
+		Status:         drivers.TaskPending,
+		SavePath:       req.SavePath,
 	}, nil
 }
 
 // QueryOfflineTask queries the status of an offline download task.
-func (d *Driver) QueryOfflineTask(ctx context.Context, profileID string, taskID string) (*drivers.TaskStatus, error) {
+func (d *Driver) QueryOfflineTask(ctx context.Context, profileID string, taskID string) (*drivers.OfflineTask, error) {
 	client, err := d.getClient(ctx, profileID)
 	if err != nil {
 		return nil, err
@@ -141,13 +143,7 @@ func (d *Driver) QueryOfflineTask(ctx context.Context, profileID string, taskID 
 
 	for _, task := range resp.Tasks {
 		if task.InfoHash == taskID {
-			return &drivers.TaskStatus{
-				TaskID:   task.InfoHash,
-				Status:   mapOfflineStatus(task),
-				Progress: task.Percent / 100.0,
-				FileName: task.Name,
-				FileSize: task.Size,
-			}, nil
+			return toOfflineTask(task), nil
 		}
 	}
 
@@ -165,7 +161,7 @@ func (d *Driver) RemoveOfflineTask(ctx context.Context, profileID string, taskID
 }
 
 // ListOfflineTasks lists all offline download tasks.
-func (d *Driver) ListOfflineTasks(ctx context.Context, profileID string) ([]drivers.TaskStatus, error) {
+func (d *Driver) ListOfflineTasks(ctx context.Context, profileID string) (*drivers.OfflineTaskList, error) {
 	client, err := d.getClient(ctx, profileID)
 	if err != nil {
 		return nil, err
@@ -176,18 +172,20 @@ func (d *Driver) ListOfflineTasks(ctx context.Context, profileID string) ([]driv
 		return nil, fmt.Errorf("list offline tasks: %w", err)
 	}
 
-	tasks := make([]drivers.TaskStatus, len(resp.Tasks))
+	tasks := make([]drivers.OfflineTask, len(resp.Tasks))
 	for i, task := range resp.Tasks {
-		tasks[i] = drivers.TaskStatus{
-			TaskID:   task.InfoHash,
-			Status:   mapOfflineStatus(task),
-			Progress: task.Percent / 100.0,
-			FileName: task.Name,
-			FileSize: task.Size,
-		}
+		tasks[i] = *toOfflineTask(task)
 	}
 
-	return tasks, nil
+	total := int(resp.Total)
+	if total == 0 {
+		total = len(tasks)
+	}
+
+	return &drivers.OfflineTaskList{
+		Items: tasks,
+		Total: total,
+	}, nil
 }
 
 // Mkdir creates a new directory.
@@ -455,17 +453,33 @@ func toFileInfo(f driver.File, filePath string) drivers.FileInfo {
 	}
 }
 
-func mapOfflineStatus(task *driver.OfflineTask) string {
+func toOfflineTask(task *driver.OfflineTask) *drivers.OfflineTask {
+	if task == nil {
+		return &drivers.OfflineTask{Status: drivers.TaskUnknown}
+	}
+
+	result := &drivers.OfflineTask{
+		TaskID:         task.InfoHash,
+		ProviderTaskID: task.InfoHash,
+		Status:         mapOfflineStatus(task),
+		Name:           task.Name,
+		Progress:       task.Percent / 100.0,
+	}
+
+	return result
+}
+
+func mapOfflineStatus(task *driver.OfflineTask) drivers.TaskStatus {
 	switch {
 	case task.IsTodo():
-		return "pending"
+		return drivers.TaskPending
 	case task.IsRunning():
-		return "downloading"
+		return drivers.TaskRunning
 	case task.IsDone():
-		return "completed"
+		return drivers.TaskCompleted
 	case task.IsFailed():
-		return "failed"
+		return drivers.TaskFailed
 	default:
-		return "unknown"
+		return drivers.TaskUnknown
 	}
 }

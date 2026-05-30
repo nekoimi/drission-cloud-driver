@@ -129,14 +129,14 @@ func (h *DriverHandler) ListOfflineTasks(c *gin.Context) {
 		return
 	}
 
-	tasks, err := driver.ListOfflineTasks(c.Request.Context(), profileID)
+	taskList, err := driver.ListOfflineTasks(c.Request.Context(), profileID)
 	if err != nil {
 		h.logger.Error("list offline tasks failed", zap.Error(err))
 		operationFailed(c, err)
 		return
 	}
 
-	response.Success(c, gin.H{"tasks": tasks})
+	response.Success(c, taskList)
 }
 
 // Mkdir creates a new directory.
