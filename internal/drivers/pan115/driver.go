@@ -3,6 +3,8 @@ package pan115
 import (
 	"context"
 	"fmt"
+	"path"
+	"strings"
 	"sync"
 
 	"github.com/SheltonZhu/115driver/pkg/driver"
@@ -101,7 +103,16 @@ func (d *Driver) AddOfflineTask(ctx context.Context, profileID string, req *driv
 		return nil, err
 	}
 
-	hashes, err := client.AddOfflineTaskURIs([]string{req.URL}, "0")
+	saveDirID := "0"
+	if strings.TrimSpace(req.SavePath) != "" {
+		var err error
+		saveDirID, err = d.resolveDirID(client, req.SavePath)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	hashes, err := client.AddOfflineTaskURIs([]string{req.URL}, saveDirID)
 	if err != nil {
 		return nil, fmt.Errorf("add offline task: %w", err)
 	}
@@ -197,20 +208,70 @@ func (d *Driver) Mkdir(ctx context.Context, profileID string, parentPath string,
 
 // Remove removes a file or directory.
 func (d *Driver) Remove(ctx context.Context, profileID string, path string) error {
-	// TODO: implement remove
-	return fmt.Errorf("not implemented")
+	client, err := d.getClient(ctx, profileID)
+	if err != nil {
+		return err
+	}
+
+	fileID, _, err := d.resolvePath(client, path)
+	if err != nil {
+		return err
+	}
+	if fileID == "0" {
+		return fmt.Errorf("cannot remove root directory")
+	}
+
+	if err := client.Delete(fileID); err != nil {
+		return fmt.Errorf("remove %s: %w", path, err)
+	}
+	return nil
 }
 
 // Move moves a file or directory.
 func (d *Driver) Move(ctx context.Context, profileID string, src string, dst string) error {
-	// TODO: implement move
-	return fmt.Errorf("not implemented")
+	client, err := d.getClient(ctx, profileID)
+	if err != nil {
+		return err
+	}
+
+	fileID, _, err := d.resolvePath(client, src)
+	if err != nil {
+		return err
+	}
+	if fileID == "0" {
+		return fmt.Errorf("cannot move root directory")
+	}
+
+	dstDirID, err := d.resolveDirID(client, dst)
+	if err != nil {
+		return err
+	}
+
+	if err := client.Move(dstDirID, fileID); err != nil {
+		return fmt.Errorf("move %s to %s: %w", src, dst, err)
+	}
+	return nil
 }
 
 // Rename renames a file or directory.
 func (d *Driver) Rename(ctx context.Context, profileID string, path string, newName string) error {
-	// TODO: implement rename
-	return fmt.Errorf("not implemented")
+	client, err := d.getClient(ctx, profileID)
+	if err != nil {
+		return err
+	}
+
+	fileID, _, err := d.resolvePath(client, path)
+	if err != nil {
+		return err
+	}
+	if fileID == "0" {
+		return fmt.Errorf("cannot rename root directory")
+	}
+
+	if err := client.Rename(fileID, newName); err != nil {
+		return fmt.Errorf("rename %s to %s: %w", path, newName, err)
+	}
+	return nil
 }
 
 // List lists files and directories in a directory.
@@ -232,15 +293,7 @@ func (d *Driver) List(ctx context.Context, profileID string, dirPath string) ([]
 
 	result := make([]drivers.FileInfo, len(*files))
 	for i, f := range *files {
-		result[i] = drivers.FileInfo{
-			ID:        f.GetID(),
-			Name:      f.Name,
-			Path:      dirPath + "/" + f.Name,
-			IsDir:     f.IsDirectory,
-			Size:      f.Size,
-			CreatedAt: f.CreateTime,
-			UpdatedAt: f.UpdateTime,
-		}
+		result[i] = toFileInfo(f, joinRemotePath(dirPath, f.Name))
 	}
 
 	return result, nil
@@ -275,21 +328,131 @@ func (d *Driver) Search(ctx context.Context, profileID string, keyword string) (
 
 // GetDownloadURL returns the download URL for a file.
 func (d *Driver) GetDownloadURL(ctx context.Context, profileID string, path string) (string, error) {
-	// TODO: implement get download URL
-	return "", fmt.Errorf("not implemented")
+	client, err := d.getClient(ctx, profileID)
+	if err != nil {
+		return "", err
+	}
+
+	file, err := d.resolveFile(client, path)
+	if err != nil {
+		return "", err
+	}
+	if file.IsDirectory {
+		return "", fmt.Errorf("cannot get download URL for directory: %s", path)
+	}
+	if file.PickCode == "" {
+		return "", fmt.Errorf("file has no pickcode: %s", path)
+	}
+
+	info, err := client.Download(file.PickCode)
+	if err != nil {
+		return "", fmt.Errorf("get download URL for %s: %w", path, err)
+	}
+	if info.Url.Url == "" {
+		return "", fmt.Errorf("empty download URL for %s", path)
+	}
+
+	return info.Url.Url, nil
 }
 
-func (d *Driver) resolveDirID(client *driver.Pan115Client, path string) (string, error) {
-	if path == "" || path == "/" {
+func (d *Driver) resolveDirID(client *driver.Pan115Client, remotePath string) (string, error) {
+	cleaned := cleanRemotePath(remotePath)
+	if cleaned == "" {
 		return "0", nil
 	}
 
-	resp, err := client.DirName2CID(path)
+	resp, err := client.DirName2CID(cleaned)
 	if err != nil {
-		return "", fmt.Errorf("resolve dir path %s: %w", path, err)
+		return "", fmt.Errorf("resolve dir path %s: %w", remotePath, err)
+	}
+	if string(resp.CategoryID) == "0" {
+		return "", fmt.Errorf("directory not found: %s", remotePath)
 	}
 
 	return string(resp.CategoryID), nil
+}
+
+func (d *Driver) resolvePath(client *driver.Pan115Client, remotePath string) (string, bool, error) {
+	if remotePath == "" || remotePath == "/" {
+		return "0", true, nil
+	}
+
+	if dirID, err := d.resolveDirID(client, remotePath); err == nil && dirID != "" && dirID != "0" {
+		return dirID, true, nil
+	}
+
+	file, err := d.resolveFile(client, remotePath)
+	if err != nil {
+		return "", false, err
+	}
+	return file.GetID(), file.IsDirectory, nil
+}
+
+func (d *Driver) resolveFile(client *driver.Pan115Client, remotePath string) (*driver.File, error) {
+	cleaned := cleanRemotePath(remotePath)
+	if cleaned == "" {
+		return nil, fmt.Errorf("file path is required")
+	}
+
+	parentPath := path.Dir(cleaned)
+	fileName := path.Base(cleaned)
+	if fileName == "." || fileName == "/" || fileName == "" {
+		return nil, fmt.Errorf("file path is required")
+	}
+
+	parentID := "0"
+	if parentPath != "." && parentPath != "/" {
+		dirID, err := d.resolveDirID(client, parentPath)
+		if err != nil {
+			return nil, err
+		}
+		parentID = dirID
+	}
+
+	files, err := client.List(parentID)
+	if err != nil {
+		return nil, fmt.Errorf("list parent directory %s: %w", parentPath, err)
+	}
+
+	for _, f := range *files {
+		if f.Name == fileName {
+			return &f, nil
+		}
+	}
+
+	return nil, fmt.Errorf("path not found: %s", remotePath)
+}
+
+func cleanRemotePath(remotePath string) string {
+	cleaned := path.Clean("/" + strings.TrimSpace(remotePath))
+	if cleaned == "/" || cleaned == "." {
+		return ""
+	}
+	return strings.TrimPrefix(cleaned, "/")
+}
+
+func joinRemotePath(dirPath string, name string) string {
+	if dirPath == "" || dirPath == "/" {
+		return "/" + name
+	}
+	return path.Join("/", dirPath, name)
+}
+
+func toFileInfo(f driver.File, filePath string) drivers.FileInfo {
+	return drivers.FileInfo{
+		ID:        f.GetID(),
+		Name:      f.Name,
+		Path:      filePath,
+		IsDir:     f.IsDirectory,
+		Size:      f.Size,
+		CreatedAt: f.CreateTime,
+		UpdatedAt: f.UpdateTime,
+		Extra: map[string]any{
+			"pick_code": f.PickCode,
+			"sha1":      f.Sha1,
+			"thumb_url": f.ThumbURL,
+		},
+	}
 }
 
 func mapOfflineStatus(task *driver.OfflineTask) string {

@@ -1,12 +1,11 @@
 package v1
 
 import (
-	"net/http"
-
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
 	"github.com/nekoimi/drission-cloud-driver/internal/drivers"
+	"github.com/nekoimi/drission-cloud-driver/internal/pkg/response"
 )
 
 // SystemHandler handles system-related endpoints.
@@ -25,13 +24,13 @@ func NewSystemHandler(registry *drivers.Registry, logger *zap.Logger) *SystemHan
 
 // Health returns the health status.
 func (h *SystemHandler) Health(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	response.Success(c, gin.H{"status": "ok"})
 }
 
 // ListDrivers returns all registered drivers.
 func (h *SystemHandler) ListDrivers(c *gin.Context) {
 	platforms := h.registry.ListPlatforms()
-	c.JSON(http.StatusOK, gin.H{
+	response.Success(c, gin.H{
 		"drivers": platforms,
 	})
 }
