@@ -58,9 +58,14 @@ func (h *DriverHandler) GetCapabilities(c *gin.Context) {
 		return
 	}
 
+	capabilities := driver.Capabilities()
 	response.Success(c, gin.H{
-		"platform":     platform,
-		"capabilities": driver.Capabilities(),
+		"platform":         platform,
+		"offline_download": capabilities.OfflineDownload,
+		"fs_list":          capabilities.FileManage,
+		"fs_search":        capabilities.Search,
+		"media_url":        capabilities.DirectLink,
+		"capabilities":     capabilities,
 	})
 }
 
@@ -122,7 +127,10 @@ func (h *DriverHandler) RemoveOfflineTask(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, gin.H{"status": "removed"})
+	response.Success(c, gin.H{
+		"task_id": taskID,
+		"deleted": true,
+	})
 }
 
 // ListOfflineTasks lists all offline download tasks.
@@ -304,13 +312,19 @@ func (h *DriverHandler) GetDownloadURL(c *gin.Context) {
 		return
 	}
 
-	path := c.Query("path")
-	if path == "" {
-		badRequest(c, "path is required")
+	fileID := strings.TrimSpace(c.Query("file_id"))
+	filePath := strings.TrimSpace(c.Query("path"))
+	if fileID == "" && filePath == "" {
+		badRequest(c, "file_id or path is required")
 		return
 	}
 
-	url, err := driver.GetDownloadURL(c.Request.Context(), profileID, path)
+	var url string
+	if fileID != "" {
+		url, err = driver.GetDownloadURLByID(c.Request.Context(), profileID, fileID)
+	} else {
+		url, err = driver.GetDownloadURL(c.Request.Context(), profileID, filePath)
+	}
 	if err != nil {
 		h.logger.Error("get download URL failed", zap.Error(err))
 		operationFailed(c, err)

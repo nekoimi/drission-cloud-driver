@@ -26,4 +26,5 @@ type Driver interface {
 
 	// Media operations
 	GetDownloadURL(ctx context.Context, profileID string, path string) (string, error)
+	GetDownloadURLByID(ctx context.Context, profileID string, fileID string) (string, error)
 }

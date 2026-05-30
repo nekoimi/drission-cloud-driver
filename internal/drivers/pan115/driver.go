@@ -341,12 +341,40 @@ func (d *Driver) GetDownloadURL(ctx context.Context, profileID string, path stri
 		return "", fmt.Errorf("file has no pickcode: %s", path)
 	}
 
+	return d.getDownloadURLForFile(client, file, path)
+}
+
+// GetDownloadURLByID returns the download URL for a file ID.
+func (d *Driver) GetDownloadURLByID(ctx context.Context, profileID string, fileID string) (string, error) {
+	client, err := d.getClient(ctx, profileID)
+	if err != nil {
+		return "", err
+	}
+
+	file, err := client.GetFile(fileID)
+	if err != nil {
+		return "", fmt.Errorf("get file %s: %w", fileID, err)
+	}
+	if file == nil || file.GetID() == "" {
+		return "", fmt.Errorf("file not found: %s", fileID)
+	}
+	if file.IsDirectory {
+		return "", fmt.Errorf("cannot get download URL for directory: %s", fileID)
+	}
+	if file.PickCode == "" {
+		return "", fmt.Errorf("file has no pickcode: %s", fileID)
+	}
+
+	return d.getDownloadURLForFile(client, file, fileID)
+}
+
+func (d *Driver) getDownloadURLForFile(client *driver.Pan115Client, file *driver.File, label string) (string, error) {
 	info, err := client.Download(file.PickCode)
 	if err != nil {
-		return "", fmt.Errorf("get download URL for %s: %w", path, err)
+		return "", fmt.Errorf("get download URL for %s: %w", label, err)
 	}
 	if info.Url.Url == "" {
-		return "", fmt.Errorf("empty download URL for %s", path)
+		return "", fmt.Errorf("empty download URL for %s", label)
 	}
 
 	return info.Url.Url, nil

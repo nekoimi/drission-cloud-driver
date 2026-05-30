@@ -63,6 +63,10 @@ func (fakeDriver) GetDownloadURL(context.Context, string, string) (string, error
 	return "", nil
 }
 
+func (fakeDriver) GetDownloadURLByID(context.Context, string, string) (string, error) {
+	return "", nil
+}
+
 func TestRegistryRegisterGetAndCache(t *testing.T) {
 	registry := NewRegistry(zap.NewNop())
 	createCount := 0
