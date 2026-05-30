@@ -53,3 +53,45 @@ func TestToOfflineTaskBuildsUnifiedTaskID(t *testing.T) {
 		t.Fatalf("Progress = %v, want 0.42", got.Progress)
 	}
 }
+
+func TestCleanRemotePath(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{name: "root", in: "/", want: ""},
+		{name: "empty", in: "", want: ""},
+		{name: "nested", in: "/get-magnet/JavDB/", want: "get-magnet/JavDB"},
+		{name: "cleans dot segments", in: "/get-magnet/./JavDB", want: "get-magnet/JavDB"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := cleanRemotePath(tt.in); got != tt.want {
+				t.Fatalf("cleanRemotePath() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestJoinRemotePath(t *testing.T) {
+	tests := []struct {
+		name string
+		dir  string
+		base string
+		want string
+	}{
+		{name: "root", dir: "/", base: "JavDB", want: "/JavDB"},
+		{name: "empty root", dir: "", base: "JavDB", want: "/JavDB"},
+		{name: "nested", dir: "/get-magnet", base: "JavDB", want: "/get-magnet/JavDB"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := joinRemotePath(tt.dir, tt.base); got != tt.want {
+				t.Fatalf("joinRemotePath() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}

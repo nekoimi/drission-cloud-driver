@@ -108,7 +108,7 @@ func (d *Driver) AddOfflineTask(ctx context.Context, profileID string, req *driv
 	saveDirID := "0"
 	if strings.TrimSpace(req.SavePath) != "" {
 		var err error
-		saveDirID, err = d.resolveDirID(client, req.SavePath)
+		saveDirID, err = d.ensureDir(ctx, client, req.SavePath)
 		if err != nil {
 			return nil, err
 		}
@@ -199,12 +199,7 @@ func (d *Driver) Mkdir(ctx context.Context, profileID string, parentPath string,
 		return err
 	}
 
-	dirID, err := d.resolveDirID(client, parentPath)
-	if err != nil {
-		return err
-	}
-
-	_, err = client.Mkdir(dirID, name)
+	_, err = d.ensureDir(ctx, client, joinRemotePath(parentPath, name))
 	return err
 }
 
@@ -372,6 +367,37 @@ func (d *Driver) resolveDirID(client *driver.Pan115Client, remotePath string) (s
 	}
 
 	return string(resp.CategoryID), nil
+}
+
+func (d *Driver) ensureDir(ctx context.Context, client *driver.Pan115Client, remotePath string) (string, error) {
+	_ = ctx
+
+	cleaned := cleanRemotePath(remotePath)
+	if cleaned == "" {
+		return "0", nil
+	}
+
+	if dirID, err := d.resolveDirID(client, cleaned); err == nil {
+		return dirID, nil
+	}
+
+	parentID := "0"
+	parts := strings.Split(cleaned, "/")
+	for i, part := range parts {
+		currentPath := strings.Join(parts[:i+1], "/")
+		if dirID, err := d.resolveDirID(client, currentPath); err == nil {
+			parentID = dirID
+			continue
+		}
+
+		dirID, err := client.Mkdir(parentID, part)
+		if err != nil {
+			return "", fmt.Errorf("create dir %s: %w", currentPath, err)
+		}
+		parentID = dirID
+	}
+
+	return parentID, nil
 }
 
 func (d *Driver) resolvePath(client *driver.Pan115Client, remotePath string) (string, bool, error) {

@@ -1,6 +1,10 @@
 package v1
 
 import (
+	"fmt"
+	"path"
+	"strings"
+
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
@@ -148,15 +152,22 @@ func (h *DriverHandler) Mkdir(c *gin.Context) {
 	}
 
 	var req struct {
+		Path       string `json:"path"`
 		ParentPath string `json:"parent_path"`
-		Name       string `json:"name" binding:"required"`
+		Name       string `json:"name"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		validationError(c, err)
 		return
 	}
 
-	if err := driver.Mkdir(c.Request.Context(), profileID, req.ParentPath, req.Name); err != nil {
+	parentPath, name, err := parseMkdirRequest(req.Path, req.ParentPath, req.Name)
+	if err != nil {
+		badRequest(c, err.Error())
+		return
+	}
+
+	if err := driver.Mkdir(c.Request.Context(), profileID, parentPath, name); err != nil {
 		h.logger.Error("mkdir failed", zap.Error(err))
 		operationFailed(c, err)
 		return
@@ -307,4 +318,28 @@ func (h *DriverHandler) GetDownloadURL(c *gin.Context) {
 	}
 
 	response.Success(c, gin.H{"url": url})
+}
+
+func parseMkdirRequest(requestPath, parentPath, name string) (string, string, error) {
+	requestPath = strings.TrimSpace(requestPath)
+	parentPath = strings.TrimSpace(parentPath)
+	name = strings.TrimSpace(name)
+
+	if requestPath != "" {
+		cleaned := path.Clean("/" + requestPath)
+		if cleaned == "/" || cleaned == "." {
+			return "", "", fmt.Errorf("path must point to a directory below root")
+		}
+
+		return path.Dir(cleaned), path.Base(cleaned), nil
+	}
+
+	if name == "" {
+		return "", "", fmt.Errorf("name is required")
+	}
+	if parentPath == "" {
+		parentPath = "/"
+	}
+
+	return parentPath, name, nil
 }
