@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -151,9 +152,55 @@ func TestAddOfflineTaskIsIdempotentByClientTaskID(t *testing.T) {
 	}
 }
 
+func TestGetOfflineTaskFallsBackToStoredRecord(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	store := offline.NewMemoryStore()
+	if err := store.Put(offline.OfflineTaskRecord{
+		Platform:  "115",
+		ProfileID: "profile-a",
+		Task: drivers.OfflineTask{
+			TaskID: "115:abc",
+			Status: drivers.TaskCompleted,
+		},
+	}); err != nil {
+		t.Fatalf("Put() error = %v", err)
+	}
+
+	fake := &idempotentDriver{queryErr: errors.New("platform task missing")}
+	registry := drivers.NewRegistry(zap.NewNop())
+	registry.Register("115", func(*browser.Manager, *zap.Logger) (drivers.Driver, error) {
+		return fake, nil
+	})
+
+	handler := NewDriverHandler(registry, nil, store, zap.NewNop())
+	router := gin.New()
+	router.GET("/drivers/:platform/offline/tasks/:id", handler.GetOfflineTask)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/drivers/115/offline/tasks/115:abc", nil)
+	req.Header.Set("X-Profile-ID", "profile-a")
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", w.Code, w.Body.String())
+	}
+
+	var got struct {
+		Data drivers.OfflineTask `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if got.Data.Status != drivers.TaskCompleted {
+		t.Fatalf("status = %q, want %q", got.Data.Status, drivers.TaskCompleted)
+	}
+}
+
 type idempotentDriver struct {
 	addCalls   int
 	queryCalls int
+	queryErr   error
 }
 
 func (d *idempotentDriver) Platform() string {
@@ -176,6 +223,9 @@ func (d *idempotentDriver) AddOfflineTask(context.Context, string, *drivers.AddT
 
 func (d *idempotentDriver) QueryOfflineTask(context.Context, string, string) (*drivers.OfflineTask, error) {
 	d.queryCalls++
+	if d.queryErr != nil {
+		return nil, d.queryErr
+	}
 	return &drivers.OfflineTask{
 		TaskID:         "115:abc",
 		ProviderTaskID: "abc",

@@ -122,6 +122,14 @@ func (h *DriverHandler) GetOfflineTask(c *gin.Context) {
 	taskID := c.Param("id")
 	task, err := driver.QueryOfflineTask(c.Request.Context(), profileID, taskID)
 	if err != nil {
+		if stored, ok := h.getStoredOfflineTask(driver.Platform(), profileID, taskID); ok {
+			h.logger.Warn("query offline task failed, returning stored record",
+				zap.String("task_id", taskID),
+				zap.Error(err),
+			)
+			response.Success(c, &stored)
+			return
+		}
 		h.logger.Error("query offline task failed", zap.Error(err))
 		operationFailed(c, err)
 		return
@@ -234,6 +242,19 @@ func (h *DriverHandler) updateStoredOfflineTask(platform, profileID string, task
 			zap.Error(err),
 		)
 	}
+}
+
+func (h *DriverHandler) getStoredOfflineTask(platform, profileID, taskID string) (drivers.OfflineTask, bool) {
+	if h.offlineStore == nil {
+		return drivers.OfflineTask{}, false
+	}
+
+	record, ok := h.offlineStore.Get(taskID)
+	if !ok || record.Platform != platform || record.ProfileID != profileID {
+		return drivers.OfflineTask{}, false
+	}
+
+	return record.Task, true
 }
 
 func (h *DriverHandler) updateStoredOfflineTasks(platform, profileID string, tasks []drivers.OfflineTask) {

@@ -57,6 +57,7 @@ drission-cloud-driver 通过 CDP（Chrome DevTools Protocol）连接真实浏览
 │   │       └── system.go           # 系统信息
 │   ├── infrastructure/
 │   │   └── logger/                 # 日志
+│   ├── offline/                    # 离线任务仓库
 │   └── pkg/
 │       ├── errcode/                # 业务错误码
 │       ├── response/               # 统一响应格式
@@ -88,6 +89,11 @@ drivers:
   default_timeout: 30
   platforms:
     - "115"  # 启用 115 网盘
+
+offline:
+  store:
+    driver: "sqlite"
+    dsn: "./data/offline_tasks.dev.db"
 ```
 
 ### 3. 启动服务

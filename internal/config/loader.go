@@ -49,6 +49,12 @@ func DefaultConfig() *Config {
 			DefaultTimeout: 30,
 			Platforms:      []string{"115"},
 		},
+		Offline: OfflineConfig{
+			Store: OfflineStoreConfig{
+				Driver: "sqlite",
+				DSN:    "./data/offline_tasks.db",
+			},
+		},
 		RateLimit: RateLimitConfig{
 			Enabled: false,
 			RPS:     100,

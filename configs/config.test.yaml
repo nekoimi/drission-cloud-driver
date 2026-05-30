@@ -14,6 +14,11 @@ drivers:
   platforms:
     - "115"
 
+offline:
+  store:
+    driver: "sqlite"
+    dsn: "./data/offline_tasks.test.db"
+
 rate_limit:
   enabled: false
   rps: 100

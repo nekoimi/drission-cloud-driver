@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -65,7 +66,10 @@ func Initialize(configPath string) (*App, func(), error) {
 	}
 
 	// 7. Offline task store
-	offlineStore := offline.NewMemoryStore()
+	offlineStore, err := newOfflineStore(cfg)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create offline store: %w", err)
+	}
 
 	// 8. Setup router
 	router := handler.SetupRouter(cfg, log, browserMgr, registry, offlineStore)
@@ -81,6 +85,11 @@ func Initialize(configPath string) (*App, func(), error) {
 
 	cleanup := func() {
 		log.Info("cleaning up resources")
+		if closer, ok := offlineStore.(interface{ Close() error }); ok {
+			if err := closer.Close(); err != nil {
+				log.Warn("failed to close offline store", zap.Error(err))
+			}
+		}
 		if err := browserMgr.Shutdown(); err != nil {
 			log.Warn("failed to shutdown browser manager", zap.Error(err))
 		}
@@ -88,4 +97,15 @@ func Initialize(configPath string) (*App, func(), error) {
 	}
 
 	return app, cleanup, nil
+}
+
+func newOfflineStore(cfg *config.Config) (offline.Store, error) {
+	switch strings.ToLower(strings.TrimSpace(cfg.Offline.Store.Driver)) {
+	case "", "sqlite":
+		return offline.NewSQLiteStore(cfg.Offline.Store.DSN)
+	case "memory":
+		return offline.NewMemoryStore(), nil
+	default:
+		return nil, fmt.Errorf("unsupported offline store driver: %s", cfg.Offline.Store.Driver)
+	}
 }
