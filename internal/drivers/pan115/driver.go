@@ -15,6 +15,8 @@ import (
 	"github.com/nekoimi/drission-cloud-driver/internal/drivers/base"
 )
 
+const platform115 = "115"
+
 // Driver implements the drivers.Driver interface for 115 cloud storage.
 type Driver struct {
 	base.Base
@@ -27,7 +29,7 @@ func NewFactory() drivers.Factory {
 	return func(browserMgr *browser.Manager, logger *zap.Logger) (drivers.Driver, error) {
 		return &Driver{
 			Base: base.Base{
-				Platform_: "115",
+				Platform_: platform115,
 				Capabilities_: drivers.DriverCapabilities{
 					OfflineDownload: true,
 					FileManage:      true,
@@ -122,7 +124,7 @@ func (d *Driver) AddOfflineTask(ctx context.Context, profileID string, req *driv
 	}
 
 	return &drivers.OfflineTask{
-		TaskID:         hashes[0],
+		TaskID:         drivers.BuildTaskID(platform115, hashes[0]),
 		ProviderTaskID: hashes[0],
 		Status:         drivers.TaskPending,
 		SavePath:       req.SavePath,
@@ -135,6 +137,7 @@ func (d *Driver) QueryOfflineTask(ctx context.Context, profileID string, taskID 
 	if err != nil {
 		return nil, err
 	}
+	providerTaskID := drivers.ProviderTaskID(platform115, taskID)
 
 	resp, err := client.ListOfflineTask(1)
 	if err != nil {
@@ -142,7 +145,7 @@ func (d *Driver) QueryOfflineTask(ctx context.Context, profileID string, taskID 
 	}
 
 	for _, task := range resp.Tasks {
-		if task.InfoHash == taskID {
+		if task.InfoHash == providerTaskID {
 			return toOfflineTask(task), nil
 		}
 	}
@@ -157,7 +160,8 @@ func (d *Driver) RemoveOfflineTask(ctx context.Context, profileID string, taskID
 		return err
 	}
 
-	return client.DeleteOfflineTasks([]string{taskID}, false)
+	providerTaskID := drivers.ProviderTaskID(platform115, taskID)
+	return client.DeleteOfflineTasks([]string{providerTaskID}, false)
 }
 
 // ListOfflineTasks lists all offline download tasks.
@@ -459,7 +463,7 @@ func toOfflineTask(task *driver.OfflineTask) *drivers.OfflineTask {
 	}
 
 	result := &drivers.OfflineTask{
-		TaskID:         task.InfoHash,
+		TaskID:         drivers.BuildTaskID(platform115, task.InfoHash),
 		ProviderTaskID: task.InfoHash,
 		Status:         mapOfflineStatus(task),
 		Name:           task.Name,
