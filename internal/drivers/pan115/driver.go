@@ -146,7 +146,7 @@ func (d *Driver) QueryOfflineTask(ctx context.Context, profileID string, taskID 
 
 	for _, task := range resp.Tasks {
 		if task.InfoHash == providerTaskID {
-			return toOfflineTask(task), nil
+			return d.toOfflineTask(client, task), nil
 		}
 	}
 
@@ -178,7 +178,7 @@ func (d *Driver) ListOfflineTasks(ctx context.Context, profileID string) (*drive
 
 	tasks := make([]drivers.OfflineTask, len(resp.Tasks))
 	for i, task := range resp.Tasks {
-		tasks[i] = *toOfflineTask(task)
+		tasks[i] = *d.toOfflineTask(client, task)
 	}
 
 	total := int(resp.Total)
@@ -483,6 +483,16 @@ func toFileInfo(f driver.File, filePath string) drivers.FileInfo {
 	}
 }
 
+func (d *Driver) toOfflineTask(client *driver.Pan115Client, task *driver.OfflineTask) *drivers.OfflineTask {
+	result := toOfflineTask(task)
+	if task == nil || result.Status != drivers.TaskCompleted {
+		return result
+	}
+
+	result.Files = d.locateOfflineTaskFiles(client, task)
+	return result
+}
+
 func toOfflineTask(task *driver.OfflineTask) *drivers.OfflineTask {
 	if task == nil {
 		return &drivers.OfflineTask{Status: drivers.TaskUnknown}
@@ -497,6 +507,77 @@ func toOfflineTask(task *driver.OfflineTask) *drivers.OfflineTask {
 	}
 
 	return result
+}
+
+func (d *Driver) locateOfflineTaskFiles(client *driver.Pan115Client, task *driver.OfflineTask) []drivers.FileInfo {
+	if task == nil {
+		return nil
+	}
+
+	if task.FileId != "" {
+		if file, err := client.GetFile(task.FileId); err == nil && file != nil && file.GetID() != "" {
+			return []drivers.FileInfo{toFileInfo(*file, joinRemotePath("", file.Name))}
+		}
+	}
+
+	if task.DirId != "" {
+		if files, err := client.List(task.DirId); err == nil && files != nil {
+			result := make([]drivers.FileInfo, 0, len(*files))
+			for _, file := range *files {
+				if matchesOfflineTaskFile(task, file) {
+					result = append(result, toFileInfo(file, joinRemotePath("", file.Name)))
+				}
+			}
+			if len(result) > 0 {
+				return result
+			}
+		}
+	}
+
+	keyword := offlineTaskSearchKeyword(task)
+	if keyword == "" {
+		return nil
+	}
+
+	searchResult, err := client.Search(&driver.SearchOption{
+		SearchValue: keyword,
+		Limit:       100,
+	})
+	if err != nil || searchResult == nil {
+		return nil
+	}
+
+	result := make([]drivers.FileInfo, 0, len(searchResult.Files))
+	for _, file := range searchResult.Files {
+		if matchesOfflineTaskFile(task, file) {
+			result = append(result, toFileInfo(file, joinRemotePath("", file.Name)))
+		}
+	}
+
+	return result
+}
+
+func matchesOfflineTaskFile(task *driver.OfflineTask, file driver.File) bool {
+	if task == nil {
+		return false
+	}
+	if task.FileId != "" && file.GetID() == task.FileId {
+		return true
+	}
+	if task.Name != "" && strings.EqualFold(file.Name, task.Name) {
+		return true
+	}
+	return false
+}
+
+func offlineTaskSearchKeyword(task *driver.OfflineTask) string {
+	if task == nil {
+		return ""
+	}
+	if strings.TrimSpace(task.Name) != "" {
+		return strings.TrimSpace(task.Name)
+	}
+	return strings.TrimSpace(task.InfoHash)
 }
 
 func mapOfflineStatus(task *driver.OfflineTask) drivers.TaskStatus {

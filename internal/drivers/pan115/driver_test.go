@@ -95,3 +95,48 @@ func TestJoinRemotePath(t *testing.T) {
 		})
 	}
 }
+
+func TestMatchesOfflineTaskFile(t *testing.T) {
+	task := &pan115driver.OfflineTask{
+		FileId: "file-1",
+		Name:   "Example.mp4",
+	}
+
+	tests := []struct {
+		name string
+		file pan115driver.File
+		want bool
+	}{
+		{name: "matches id", file: pan115driver.File{FileID: "file-1", Name: "Other.mp4"}, want: true},
+		{name: "matches name case insensitive", file: pan115driver.File{FileID: "file-2", Name: "example.mp4"}, want: true},
+		{name: "no match", file: pan115driver.File{FileID: "file-2", Name: "Other.mp4"}, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := matchesOfflineTaskFile(task, tt.file); got != tt.want {
+				t.Fatalf("matchesOfflineTaskFile() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestOfflineTaskSearchKeyword(t *testing.T) {
+	tests := []struct {
+		name string
+		task *pan115driver.OfflineTask
+		want string
+	}{
+		{name: "nil", task: nil, want: ""},
+		{name: "name first", task: &pan115driver.OfflineTask{Name: " Example ", InfoHash: "hash"}, want: "Example"},
+		{name: "hash fallback", task: &pan115driver.OfflineTask{InfoHash: " hash "}, want: "hash"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := offlineTaskSearchKeyword(tt.task); got != tt.want {
+				t.Fatalf("offlineTaskSearchKeyword() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
