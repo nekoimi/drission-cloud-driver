@@ -63,9 +63,14 @@ func TestHTTPStatusFromCode(t *testing.T) {
 		want int
 	}{
 		{name: "bad request", code: errcode.BadRequest.Value, want: http.StatusBadRequest},
+		{name: "invalid request", code: errcode.ErrInvalidRequest.Value, want: http.StatusBadRequest},
+		{name: "profile not logged in", code: errcode.ErrProfileNotLoggedIn.Value, want: http.StatusUnauthorized},
 		{name: "not found", code: errcode.NotFound.Value, want: http.StatusNotFound},
+		{name: "offline task not found", code: errcode.ErrTaskNotFound.Value, want: http.StatusNotFound},
+		{name: "idempotent conflict", code: errcode.ErrIdempotentConflict.Value, want: http.StatusConflict},
 		{name: "too many requests", code: errcode.TooManyReq.Value, want: http.StatusTooManyRequests},
 		{name: "internal", code: errcode.Internal.Value, want: http.StatusInternalServerError},
+		{name: "platform state", code: errcode.ErrPlatformState.Value, want: http.StatusInternalServerError},
 		{name: "unknown", code: 1, want: http.StatusInternalServerError},
 	}
 

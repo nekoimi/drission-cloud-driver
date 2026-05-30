@@ -9,7 +9,7 @@ import (
 )
 
 func badRequest(c *gin.Context, msg string) {
-	response.ErrorWithMsg(c, http.StatusBadRequest, errcode.BadRequest, msg)
+	response.ErrorWithMsg(c, http.StatusBadRequest, errcode.ErrInvalidRequest, msg)
 }
 
 func validationError(c *gin.Context, err error) {
@@ -21,6 +21,11 @@ func notFound(c *gin.Context, code *errcode.Code, err error) {
 }
 
 func operationFailed(c *gin.Context, err error) {
+	if appErr, ok := response.IsAppError(err); ok {
+		response.AppErr(c, appErr)
+		return
+	}
+
 	response.ErrorWithMsg(c, http.StatusInternalServerError, errcode.ErrOperationFailed, err.Error())
 }
 

@@ -13,6 +13,7 @@ import (
 	"github.com/nekoimi/drission-cloud-driver/internal/browser"
 	"github.com/nekoimi/drission-cloud-driver/internal/drivers"
 	"github.com/nekoimi/drission-cloud-driver/internal/drivers/base"
+	"github.com/nekoimi/drission-cloud-driver/internal/pkg/errcode"
 )
 
 const platform115 = "115"
@@ -65,23 +66,23 @@ func (d *Driver) getClient(ctx context.Context, profileID string) (*driver.Pan11
 	// Get browser connection
 	conn, err := d.BrowserMgr.GetConnection(ctx, profileID)
 	if err != nil {
-		return nil, fmt.Errorf("get browser connection: %w", err)
+		return nil, errcode.Wrap(errcode.ErrCDPConnection, fmt.Errorf("get browser connection: %w", err))
 	}
 
 	// Get cookie from browser
 	cookieStr, err := conn.GetCookieString(ctx, "115.com")
 	if err != nil {
-		return nil, fmt.Errorf("get cookie from browser: %w", err)
+		return nil, errcode.Wrap(errcode.ErrCDPConnection, fmt.Errorf("get cookie from browser: %w", err))
 	}
 
 	if cookieStr == "" {
-		return nil, fmt.Errorf("no cookie found for 115.com, please login to 115 in the browser first")
+		return nil, errcode.NewWithDetail(errcode.ErrProfileNotLoggedIn, "no cookie found for 115.com, please login to 115 in the browser first")
 	}
 
 	// Parse cookie
 	cr := &driver.Credential{}
 	if err := cr.FromCookie(cookieStr); err != nil {
-		return nil, fmt.Errorf("parse 115 cookie: %w", err)
+		return nil, errcode.Wrap(errcode.ErrProfileNotLoggedIn, fmt.Errorf("parse 115 cookie: %w", err))
 	}
 
 	// Create client
@@ -89,7 +90,7 @@ func (d *Driver) getClient(ctx context.Context, profileID string) (*driver.Pan11
 
 	// Verify login
 	if err := client.LoginCheck(); err != nil {
-		return nil, fmt.Errorf("115 login check failed: %w", err)
+		return nil, errcode.Wrap(errcode.ErrProfileNotLoggedIn, fmt.Errorf("115 login check failed: %w", err))
 	}
 
 	d.clients[profileID] = client
@@ -116,11 +117,11 @@ func (d *Driver) AddOfflineTask(ctx context.Context, profileID string, req *driv
 
 	hashes, err := client.AddOfflineTaskURIs([]string{req.URL}, saveDirID)
 	if err != nil {
-		return nil, fmt.Errorf("add offline task: %w", err)
+		return nil, errcode.Wrap(errcode.ErrOperationFailed, fmt.Errorf("add offline task: %w", err))
 	}
 
 	if len(hashes) == 0 {
-		return nil, fmt.Errorf("no task created")
+		return nil, errcode.NewWithDetail(errcode.ErrPlatformState, "no task created")
 	}
 
 	return &drivers.OfflineTask{
@@ -141,7 +142,7 @@ func (d *Driver) QueryOfflineTask(ctx context.Context, profileID string, taskID 
 
 	resp, err := client.ListOfflineTask(1)
 	if err != nil {
-		return nil, fmt.Errorf("list offline tasks: %w", err)
+		return nil, errcode.Wrap(errcode.ErrOperationFailed, fmt.Errorf("list offline tasks: %w", err))
 	}
 
 	for _, task := range resp.Tasks {
@@ -150,7 +151,7 @@ func (d *Driver) QueryOfflineTask(ctx context.Context, profileID string, taskID 
 		}
 	}
 
-	return nil, fmt.Errorf("task not found: %s", taskID)
+	return nil, errcode.NewWithDetail(errcode.ErrTaskNotFound, fmt.Sprintf("task not found: %s", taskID))
 }
 
 // RemoveOfflineTask removes an offline download task.
@@ -161,7 +162,10 @@ func (d *Driver) RemoveOfflineTask(ctx context.Context, profileID string, taskID
 	}
 
 	providerTaskID := drivers.ProviderTaskID(platform115, taskID)
-	return client.DeleteOfflineTasks([]string{providerTaskID}, false)
+	if err := client.DeleteOfflineTasks([]string{providerTaskID}, false); err != nil {
+		return errcode.Wrap(errcode.ErrOperationFailed, fmt.Errorf("delete offline task %s: %w", taskID, err))
+	}
+	return nil
 }
 
 // ListOfflineTasks lists all offline download tasks.
@@ -173,7 +177,7 @@ func (d *Driver) ListOfflineTasks(ctx context.Context, profileID string) (*drive
 
 	resp, err := client.ListOfflineTask(1)
 	if err != nil {
-		return nil, fmt.Errorf("list offline tasks: %w", err)
+		return nil, errcode.Wrap(errcode.ErrOperationFailed, fmt.Errorf("list offline tasks: %w", err))
 	}
 
 	tasks := make([]drivers.OfflineTask, len(resp.Tasks))
