@@ -13,6 +13,7 @@ import (
 	"github.com/nekoimi/drission-cloud-driver/internal/drivers/pan115"
 	"github.com/nekoimi/drission-cloud-driver/internal/handler"
 	"github.com/nekoimi/drission-cloud-driver/internal/infrastructure/logger"
+	"github.com/nekoimi/drission-cloud-driver/internal/offline"
 	"github.com/nekoimi/drission-cloud-driver/internal/pkg/timeutil"
 )
 
@@ -22,6 +23,7 @@ type App struct {
 	Logger         *zap.Logger
 	BrowserManager *browser.Manager
 	Registry       *drivers.Registry
+	OfflineStore   offline.Store
 }
 
 func Initialize(configPath string) (*App, func(), error) {
@@ -56,14 +58,17 @@ func Initialize(configPath string) (*App, func(), error) {
 		switch platform {
 		case "115":
 			registry.Register("115", pan115.NewFactory())
-		// Add more platforms here
-		// case "pikpak":
-		//     registry.Register("pikpak", pikpak.NewFactory())
+			// Add more platforms here
+			// case "pikpak":
+			//     registry.Register("pikpak", pikpak.NewFactory())
 		}
 	}
 
-	// 7. Setup router
-	router := handler.SetupRouter(cfg, log, browserMgr, registry)
+	// 7. Offline task store
+	offlineStore := offline.NewMemoryStore()
+
+	// 8. Setup router
+	router := handler.SetupRouter(cfg, log, browserMgr, registry, offlineStore)
 
 	app := &App{
 		Engine:         router,
@@ -71,6 +76,7 @@ func Initialize(configPath string) (*App, func(), error) {
 		Logger:         log,
 		BrowserManager: browserMgr,
 		Registry:       registry,
+		OfflineStore:   offlineStore,
 	}
 
 	cleanup := func() {

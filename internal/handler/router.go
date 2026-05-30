@@ -9,9 +9,10 @@ import (
 	"github.com/nekoimi/drission-cloud-driver/internal/drivers"
 	"github.com/nekoimi/drission-cloud-driver/internal/handler/middleware"
 	v1 "github.com/nekoimi/drission-cloud-driver/internal/handler/v1"
+	"github.com/nekoimi/drission-cloud-driver/internal/offline"
 )
 
-func SetupRouter(cfg *config.Config, logger *zap.Logger, browserMgr *browser.Manager, registry *drivers.Registry) *gin.Engine {
+func SetupRouter(cfg *config.Config, logger *zap.Logger, browserMgr *browser.Manager, registry *drivers.Registry, offlineStore offline.Store) *gin.Engine {
 	gin.SetMode(cfg.Server.Mode)
 	r := gin.New()
 
@@ -29,7 +30,7 @@ func SetupRouter(cfg *config.Config, logger *zap.Logger, browserMgr *browser.Man
 	// Handlers
 	systemHandler := v1.NewSystemHandler(registry, logger)
 	profileHandler := v1.NewProfileHandler(browserMgr, logger)
-	driverHandler := v1.NewDriverHandler(registry, browserMgr, logger)
+	driverHandler := v1.NewDriverHandler(registry, browserMgr, offlineStore, logger)
 
 	// Health check
 	r.GET("/health", systemHandler.Health)

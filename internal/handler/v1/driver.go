@@ -4,29 +4,34 @@ import (
 	"fmt"
 	"path"
 	"strings"
+	"sync"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
 	"github.com/nekoimi/drission-cloud-driver/internal/browser"
 	"github.com/nekoimi/drission-cloud-driver/internal/drivers"
+	"github.com/nekoimi/drission-cloud-driver/internal/offline"
 	"github.com/nekoimi/drission-cloud-driver/internal/pkg/errcode"
 	"github.com/nekoimi/drission-cloud-driver/internal/pkg/response"
 )
 
 // DriverHandler handles driver API endpoints.
 type DriverHandler struct {
-	registry   *drivers.Registry
-	browserMgr *browser.Manager
-	logger     *zap.Logger
+	registry      *drivers.Registry
+	browserMgr    *browser.Manager
+	offlineStore  offline.Store
+	idempotencyMu sync.Mutex
+	logger        *zap.Logger
 }
 
 // NewDriverHandler creates a new driver handler.
-func NewDriverHandler(registry *drivers.Registry, browserMgr *browser.Manager, logger *zap.Logger) *DriverHandler {
+func NewDriverHandler(registry *drivers.Registry, browserMgr *browser.Manager, offlineStore offline.Store, logger *zap.Logger) *DriverHandler {
 	return &DriverHandler{
-		registry:   registry,
-		browserMgr: browserMgr,
-		logger:     logger,
+		registry:     registry,
+		browserMgr:   browserMgr,
+		offlineStore: offlineStore,
+		logger:       logger,
 	}
 }
 
@@ -82,6 +87,18 @@ func (h *DriverHandler) AddOfflineTask(c *gin.Context) {
 		validationError(c, err)
 		return
 	}
+	req.ClientTaskID = strings.TrimSpace(req.ClientTaskID)
+
+	if req.ClientTaskID != "" && h.offlineStore != nil {
+		h.idempotencyMu.Lock()
+		defer h.idempotencyMu.Unlock()
+
+		if record, ok := h.offlineStore.GetByClientTask(driver.Platform(), profileID, req.ClientTaskID); ok {
+			task := h.refreshOfflineTask(c, driver, profileID, record)
+			response.Success(c, task)
+			return
+		}
+	}
 
 	task, err := driver.AddOfflineTask(c.Request.Context(), profileID, &req)
 	if err != nil {
@@ -90,6 +107,7 @@ func (h *DriverHandler) AddOfflineTask(c *gin.Context) {
 		return
 	}
 
+	h.putOfflineTask(driver.Platform(), profileID, req, *task)
 	response.Success(c, task)
 }
 
@@ -109,6 +127,7 @@ func (h *DriverHandler) GetOfflineTask(c *gin.Context) {
 		return
 	}
 
+	h.updateStoredOfflineTask(driver.Platform(), profileID, *task)
 	response.Success(c, task)
 }
 
@@ -127,6 +146,7 @@ func (h *DriverHandler) RemoveOfflineTask(c *gin.Context) {
 		return
 	}
 
+	h.markStoredOfflineTaskCanceled(driver.Platform(), profileID, taskID)
 	response.Success(c, gin.H{
 		"task_id": taskID,
 		"deleted": true,
@@ -148,7 +168,97 @@ func (h *DriverHandler) ListOfflineTasks(c *gin.Context) {
 		return
 	}
 
+	h.updateStoredOfflineTasks(driver.Platform(), profileID, taskList.Items)
 	response.Success(c, taskList)
+}
+
+func (h *DriverHandler) refreshOfflineTask(c *gin.Context, driver drivers.Driver, profileID string, record offline.OfflineTaskRecord) *drivers.OfflineTask {
+	task, err := driver.QueryOfflineTask(c.Request.Context(), profileID, record.Task.TaskID)
+	if err != nil {
+		h.logger.Warn("refresh idempotent offline task failed",
+			zap.String("task_id", record.Task.TaskID),
+			zap.Error(err),
+		)
+		return &record.Task
+	}
+
+	record.Task = *task
+	if err := h.offlineStore.Update(record); err != nil {
+		h.logger.Warn("update offline task store failed",
+			zap.String("task_id", task.TaskID),
+			zap.Error(err),
+		)
+	}
+	return task
+}
+
+func (h *DriverHandler) putOfflineTask(platform, profileID string, req drivers.AddTaskRequest, task drivers.OfflineTask) {
+	if h.offlineStore == nil {
+		return
+	}
+
+	if err := h.offlineStore.Put(offline.OfflineTaskRecord{
+		Platform:     platform,
+		ProfileID:    profileID,
+		ClientTaskID: req.ClientTaskID,
+		URL:          req.URL,
+		Category:     req.Category,
+		SavePath:     req.SavePath,
+		Metadata:     req.Metadata,
+		Task:         task,
+	}); err != nil {
+		h.logger.Warn("put offline task store failed",
+			zap.String("task_id", task.TaskID),
+			zap.Error(err),
+		)
+	}
+}
+
+func (h *DriverHandler) updateStoredOfflineTask(platform, profileID string, task drivers.OfflineTask) {
+	if h.offlineStore == nil {
+		return
+	}
+
+	record, ok := h.offlineStore.Get(task.TaskID)
+	if !ok {
+		return
+	}
+	if record.Platform != platform || record.ProfileID != profileID {
+		return
+	}
+
+	record.Task = task
+	if err := h.offlineStore.Update(record); err != nil {
+		h.logger.Warn("update offline task store failed",
+			zap.String("task_id", task.TaskID),
+			zap.Error(err),
+		)
+	}
+}
+
+func (h *DriverHandler) updateStoredOfflineTasks(platform, profileID string, tasks []drivers.OfflineTask) {
+	for _, task := range tasks {
+		h.updateStoredOfflineTask(platform, profileID, task)
+	}
+}
+
+func (h *DriverHandler) markStoredOfflineTaskCanceled(platform, profileID, taskID string) {
+	if h.offlineStore == nil {
+		return
+	}
+
+	record, ok := h.offlineStore.Get(taskID)
+	if !ok || record.Platform != platform || record.ProfileID != profileID {
+		return
+	}
+
+	record.Task.Status = drivers.TaskCanceled
+	if err := h.offlineStore.Update(record); err != nil {
+		h.logger.Warn("mark offline task canceled failed",
+			zap.String("task_id", taskID),
+			zap.Error(err),
+		)
+	}
 }
 
 // Mkdir creates a new directory.
