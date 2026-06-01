@@ -54,12 +54,12 @@ func SetupRouter(cfg *config.Config, logger *zap.Logger, browserMgr *browser.Man
 			d.GET("/capabilities", driverHandler.GetCapabilities)
 
 			// Offline download
-			offline := d.Group("/offline")
+			offlineApi := d.Group("/offline")
 			{
-				offline.POST("/add", driverHandler.AddOfflineTask)
-				offline.GET("/tasks", driverHandler.ListOfflineTasks)
-				offline.GET("/tasks/:id", driverHandler.GetOfflineTask)
-				offline.DELETE("/tasks/:id", driverHandler.RemoveOfflineTask)
+				offlineApi.POST("/add", driverHandler.AddOfflineTask)
+				offlineApi.GET("/tasks", driverHandler.ListOfflineTasks)
+				offlineApi.GET("/tasks/:id", driverHandler.GetOfflineTask)
+				offlineApi.DELETE("/tasks/:id", driverHandler.RemoveOfflineTask)
 			}
 
 			// File system

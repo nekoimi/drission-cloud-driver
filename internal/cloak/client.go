@@ -54,7 +54,7 @@ func (c *Client) GetProfile(ctx context.Context, profileID string) (*BrowserProf
 
 // StartProfile starts a browser profile.
 func (c *Client) StartProfile(ctx context.Context, profileID string) error {
-	path := fmt.Sprintf("/api/profiles/%s/start", profileID)
+	path := fmt.Sprintf("/api/profiles/%s/launch", profileID)
 	return c.do(ctx, http.MethodPost, path, nil, nil)
 }
 
