@@ -107,9 +107,9 @@ func (c *Client) GetCDPEndpoint(ctx context.Context, profileID string) (string, 
 }
 
 func (c *Client) do(ctx context.Context, method, path string, body any, result any) error {
-	url := c.baseURL + path
+	u := c.baseURL + path
 
-	req, err := http.NewRequestWithContext(ctx, method, url, nil)
+	req, err := http.NewRequestWithContext(ctx, method, u, nil)
 	if err != nil {
 		return fmt.Errorf("create request: %w", err)
 	}
@@ -119,7 +119,7 @@ func (c *Client) do(ctx context.Context, method, path string, body any, result a
 		req.Header.Set("Authorization", "Bearer "+c.apiKey)
 	}
 
-	c.logger.Debug("cloak request", zap.String("method", method), zap.String("url", url))
+	c.logger.Debug("cloak request", zap.String("method", method), zap.String("url", u))
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
