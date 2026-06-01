@@ -1,0 +1,77 @@
+name: Test Docker Image
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Branch to build"
+        required: true
+        default: "master"
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ inputs.branch }}
+  cancel-in-progress: true
+
+jobs:
+  build-test-image:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout selected branch
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.branch }}
+
+      - name: Prepare image tags
+        id: image
+        shell: bash
+        env:
+          SELECTED_BRANCH: ${{ inputs.branch }}
+        run: |
+          branch_slug="$(printf '%s' "${SELECTED_BRANCH}" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9_.-]+/-/g; s/^-+|-+$//g')"
+          if [ -z "${branch_slug}" ]; then
+            branch_slug="manual"
+          fi
+          short_sha="$(git rev-parse --short HEAD)"
+          image="${REGISTRY}/${IMAGE_NAME,,}"
+
+          {
+            echo "image=${image}"
+            echo "branch_slug=${branch_slug}"
+            echo "short_sha=${short_sha}"
+            echo "tags<<EOF"
+            echo "${image}:test"
+            echo "${image}:test-${branch_slug}"
+            echo "${image}:test-${branch_slug}-${short_sha}"
+            echo "EOF"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Login to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build and push test image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: deployments/Dockerfile
+          push: true
+          tags: ${{ steps.image.outputs.tags }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ steps.image.outputs.short_sha }}
+            org.opencontainers.image.version=test-${{ steps.image.outputs.branch_slug }}
