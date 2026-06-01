@@ -19,20 +19,24 @@ var (
 	TooManyReq   = &Code{Value: 42900, Message: "too many requests"}
 
 	// 用户相关 2xxxx
-	ErrUserNotFound  = &Code{Value: 40401, Message: "user not found"}
-	ErrEmailExists   = &Code{Value: 40901, Message: "email already exists"}
+	ErrUserNotFound   = &Code{Value: 40401, Message: "user not found"}
+	ErrEmailExists    = &Code{Value: 40901, Message: "email already exists"}
 	ErrUsernameExists = &Code{Value: 40902, Message: "username already exists"}
-	ErrInvalidCreds  = &Code{Value: 40101, Message: "invalid email or password"}
+	ErrInvalidCreds   = &Code{Value: 40101, Message: "invalid email or password"}
 
 	// Driver 相关 3xxxx
-	ErrDriverNotFound     = &Code{Value: 40410, Message: "driver not found"}
+	ErrDriverNotFound       = &Code{Value: 40410, Message: "driver not found"}
 	ErrPlatformNotSupported = &Code{Value: 40010, Message: "platform not supported"}
-	ErrProfileNotFound    = &Code{Value: 40411, Message: "browser profile not found"}
-	ErrProfileNotRunning  = &Code{Value: 40011, Message: "browser profile not running"}
-	ErrCDPConnection      = &Code{Value: 50010, Message: "cdp connection failed"}
-	ErrPageTimeout        = &Code{Value: 50011, Message: "page operation timeout"}
-	ErrOperationFailed    = &Code{Value: 50012, Message: "driver operation failed"}
-	ErrTaskNotFound       = &Code{Value: 40412, Message: "offline task not found"}
+	ErrInvalidRequest       = &Code{Value: 40020, Message: "invalid request"}
+	ErrProfileNotFound      = &Code{Value: 40411, Message: "browser profile not found"}
+	ErrProfileNotRunning    = &Code{Value: 40011, Message: "browser profile not running"}
+	ErrProfileNotLoggedIn   = &Code{Value: 40110, Message: "profile is not logged in"}
+	ErrCDPConnection        = &Code{Value: 50010, Message: "cdp connection failed"}
+	ErrPageTimeout          = &Code{Value: 50011, Message: "page operation timeout"}
+	ErrOperationFailed      = &Code{Value: 50012, Message: "driver operation failed"}
+	ErrTaskNotFound         = &Code{Value: 40412, Message: "offline task not found"}
+	ErrIdempotentConflict   = &Code{Value: 40910, Message: "idempotent task already exists"}
+	ErrPlatformState        = &Code{Value: 50013, Message: "platform state cannot be parsed"}
 )
 
 type Code struct {

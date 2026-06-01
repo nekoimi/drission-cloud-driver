@@ -79,6 +79,24 @@ func (m *Manager) ListProfiles(ctx context.Context) ([]cloak.BrowserProfile, err
 	return m.cloak.ListProfiles(ctx)
 }
 
+// GetProfile returns a browser profile from CloakBrowser-Manager.
+func (m *Manager) GetProfile(ctx context.Context, profileID string) (*cloak.BrowserProfile, error) {
+	return m.cloak.GetProfile(ctx, profileID)
+}
+
+// StartProfile starts a browser profile in CloakBrowser-Manager.
+func (m *Manager) StartProfile(ctx context.Context, profileID string) error {
+	return m.cloak.StartProfile(ctx, profileID)
+}
+
+// StopProfile stops a browser profile and clears any cached CDP connection.
+func (m *Manager) StopProfile(ctx context.Context, profileID string) error {
+	if err := m.CloseConnection(profileID); err != nil {
+		return err
+	}
+	return m.cloak.StopProfile(ctx, profileID)
+}
+
 // Shutdown closes all connections.
 func (m *Manager) Shutdown() error {
 	m.mu.Lock()

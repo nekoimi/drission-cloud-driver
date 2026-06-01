@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -13,6 +14,7 @@ import (
 	"github.com/nekoimi/drission-cloud-driver/internal/drivers/pan115"
 	"github.com/nekoimi/drission-cloud-driver/internal/handler"
 	"github.com/nekoimi/drission-cloud-driver/internal/infrastructure/logger"
+	"github.com/nekoimi/drission-cloud-driver/internal/offline"
 	"github.com/nekoimi/drission-cloud-driver/internal/pkg/timeutil"
 )
 
@@ -22,6 +24,7 @@ type App struct {
 	Logger         *zap.Logger
 	BrowserManager *browser.Manager
 	Registry       *drivers.Registry
+	OfflineStore   offline.Store
 }
 
 func Initialize(configPath string) (*App, func(), error) {
@@ -56,14 +59,20 @@ func Initialize(configPath string) (*App, func(), error) {
 		switch platform {
 		case "115":
 			registry.Register("115", pan115.NewFactory())
-		// Add more platforms here
-		// case "pikpak":
-		//     registry.Register("pikpak", pikpak.NewFactory())
+			// Add more platforms here
+			// case "pikpak":
+			//     registry.Register("pikpak", pikpak.NewFactory())
 		}
 	}
 
-	// 7. Setup router
-	router := handler.SetupRouter(cfg, log, browserMgr, registry)
+	// 7. Offline task store
+	offlineStore, err := newOfflineStore(cfg)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create offline store: %w", err)
+	}
+
+	// 8. Setup router
+	router := handler.SetupRouter(cfg, log, browserMgr, registry, offlineStore)
 
 	app := &App{
 		Engine:         router,
@@ -71,10 +80,16 @@ func Initialize(configPath string) (*App, func(), error) {
 		Logger:         log,
 		BrowserManager: browserMgr,
 		Registry:       registry,
+		OfflineStore:   offlineStore,
 	}
 
 	cleanup := func() {
 		log.Info("cleaning up resources")
+		if closer, ok := offlineStore.(interface{ Close() error }); ok {
+			if err := closer.Close(); err != nil {
+				log.Warn("failed to close offline store", zap.Error(err))
+			}
+		}
 		if err := browserMgr.Shutdown(); err != nil {
 			log.Warn("failed to shutdown browser manager", zap.Error(err))
 		}
@@ -82,4 +97,15 @@ func Initialize(configPath string) (*App, func(), error) {
 	}
 
 	return app, cleanup, nil
+}
+
+func newOfflineStore(cfg *config.Config) (offline.Store, error) {
+	switch strings.ToLower(strings.TrimSpace(cfg.Offline.Store.Driver)) {
+	case "", "sqlite":
+		return offline.NewSQLiteStore(cfg.Offline.Store.DSN)
+	case "memory":
+		return offline.NewMemoryStore(), nil
+	default:
+		return nil, fmt.Errorf("unsupported offline store driver: %s", cfg.Offline.Store.Driver)
+	}
 }

@@ -6,13 +6,18 @@ server:
   allowed_origins: []
 
 cloak:
-  base_url: "http://localhost:3000"
+  base_url: "https://cloakbrowser-manager.home.sakuraio.com"
   api_key: ""
 
 drivers:
   default_timeout: 30
   platforms:
     - "115"
+
+offline:
+  store:
+    driver: "sqlite"
+    dsn: "./data/offline_tasks.dev.db"
 
 rate_limit:
   enabled: false

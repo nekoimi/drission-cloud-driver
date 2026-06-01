@@ -4,6 +4,7 @@ type Config struct {
 	Server    ServerConfig    `mapstructure:"server"`
 	Cloak     CloakConfig     `mapstructure:"cloak"`
 	Drivers   DriversConfig   `mapstructure:"drivers"`
+	Offline   OfflineConfig   `mapstructure:"offline"`
 	RateLimit RateLimitConfig `mapstructure:"rate_limit"`
 }
 
@@ -23,6 +24,15 @@ type CloakConfig struct {
 type DriversConfig struct {
 	DefaultTimeout int      `mapstructure:"default_timeout"` // 秒
 	Platforms      []string `mapstructure:"platforms"`       // 启用的平台列表，如 ["115", "pikpak"]
+}
+
+type OfflineConfig struct {
+	Store OfflineStoreConfig `mapstructure:"store"`
+}
+
+type OfflineStoreConfig struct {
+	Driver string `mapstructure:"driver"` // memory / sqlite
+	DSN    string `mapstructure:"dsn"`
 }
 
 type RateLimitConfig struct {

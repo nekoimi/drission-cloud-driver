@@ -11,10 +11,10 @@ type Driver interface {
 	Capabilities() DriverCapabilities
 
 	// Offline download operations
-	AddOfflineTask(ctx context.Context, profileID string, req *AddTaskRequest) (*TaskStatus, error)
-	QueryOfflineTask(ctx context.Context, profileID string, taskID string) (*TaskStatus, error)
+	AddOfflineTask(ctx context.Context, profileID string, req *AddTaskRequest) (*OfflineTask, error)
+	QueryOfflineTask(ctx context.Context, profileID string, taskID string) (*OfflineTask, error)
 	RemoveOfflineTask(ctx context.Context, profileID string, taskID string) error
-	ListOfflineTasks(ctx context.Context, profileID string) ([]TaskStatus, error)
+	ListOfflineTasks(ctx context.Context, profileID string) (*OfflineTaskList, error)
 
 	// File system operations
 	Mkdir(ctx context.Context, profileID string, parentPath string, name string) error
@@ -26,4 +26,5 @@ type Driver interface {
 
 	// Media operations
 	GetDownloadURL(ctx context.Context, profileID string, path string) (string, error)
+	GetDownloadURLByID(ctx context.Context, profileID string, fileID string) (string, error)
 }
