@@ -86,7 +86,7 @@ func (d *Driver) getClient(ctx context.Context, profileID string) (*driver.Pan11
 	}
 
 	// Create client
-	client = driver.Default().ImportCredential(cr)
+	client = driver.New(driver.UA(driver.UA115Browser), driver.WithDebug(), driver.WithTrace()).ImportCredential(cr)
 
 	// Verify login
 	if err := client.LoginCheck(); err != nil {

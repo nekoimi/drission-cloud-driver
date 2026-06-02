@@ -30,7 +30,7 @@ func NewConnection(ctx context.Context, profileID, cdpURL string, logger *zap.Lo
 
 	browser, err := pw.Chromium.ConnectOverCDP(cdpURL)
 	if err != nil {
-		pw.Stop()
+		_ = pw.Stop()
 		return nil, fmt.Errorf("connect to browser: %w", err)
 	}
 
