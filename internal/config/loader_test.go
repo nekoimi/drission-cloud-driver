@@ -65,8 +65,8 @@ rate_limit:
 func TestDefaultConfig(t *testing.T) {
 	cfg := DefaultConfig()
 
-	if cfg.Server.Port != "8080" {
-		t.Fatalf("default port = %q, want 8080", cfg.Server.Port)
+	if cfg.Server.Port != "8091" {
+		t.Fatalf("default port = %q, want 8091", cfg.Server.Port)
 	}
 	if cfg.Cloak.BaseURL == "" {
 		t.Fatalf("default cloak base url is empty")

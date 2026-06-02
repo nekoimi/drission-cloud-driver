@@ -37,7 +37,7 @@ func Load(configPath string) (*Config, error) {
 func DefaultConfig() *Config {
 	return &Config{
 		Server: ServerConfig{
-			Port:            "8080",
+			Port:            "8091",
 			Mode:            "debug",
 			Timezone:        "Asia/Shanghai",
 			ShutdownTimeout: 10,

@@ -78,7 +78,7 @@ CloakBrowser-Manager 负责管理浏览器实例，请参考 [官方文档](http
 
 ```yaml
 server:
-  port: "8080"
+  port: "8091"
   mode: debug
   timezone: "Asia/Shanghai"
 
@@ -167,18 +167,18 @@ make run
 ```bash
 # 列出 115 网盘根目录
 curl -H "X-Profile-ID: your-profile-id" \
-  "http://localhost:8080/drivers/115/fs/list?path=/"
+  "http://localhost:8091/drivers/115/fs/list?path=/"
 
 # 提交离线下载任务
 curl -X POST \
   -H "X-Profile-ID: your-profile-id" \
   -H "Content-Type: application/json" \
   -d '{"url": "https://example.com/file.zip"}' \
-  "http://localhost:8080/drivers/115/offline/add"
+  "http://localhost:8091/drivers/115/offline/add"
 
 # 搜索文件
 curl -H "X-Profile-ID: your-profile-id" \
-  "http://localhost:8080/drivers/115/fs/search?keyword=movie"
+  "http://localhost:8091/drivers/115/fs/search?keyword=movie"
 ```
 
 ### 统一响应格式

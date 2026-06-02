@@ -4,7 +4,7 @@
 
 ## 基础信息
 
-- 默认服务地址：`http://localhost:8080`
+- 默认服务地址：`http://localhost:8091`
 - 默认已注册平台：`115`
 - Content-Type：有请求体的接口使用 `application/json`
 - Driver 类接口需要指定浏览器 Profile：
@@ -124,7 +124,7 @@
 请求示例：
 
 ```bash
-curl "http://localhost:8080/health"
+curl "http://localhost:8091/health"
 ```
 
 成功响应：
@@ -146,7 +146,7 @@ curl "http://localhost:8080/health"
 请求示例：
 
 ```bash
-curl "http://localhost:8080/drivers"
+curl "http://localhost:8091/drivers"
 ```
 
 成功响应：
@@ -170,7 +170,7 @@ curl "http://localhost:8080/drivers"
 请求示例：
 
 ```bash
-curl "http://localhost:8080/profiles"
+curl "http://localhost:8091/profiles"
 ```
 
 成功响应：
@@ -198,7 +198,7 @@ curl "http://localhost:8080/profiles"
 请求示例：
 
 ```bash
-curl "http://localhost:8080/profiles/your-profile-id"
+curl "http://localhost:8091/profiles/your-profile-id"
 ```
 
 成功响应：`data` 为 `BrowserProfile`。
@@ -216,7 +216,7 @@ curl "http://localhost:8080/profiles/your-profile-id"
 请求示例：
 
 ```bash
-curl -X POST "http://localhost:8080/profiles/your-profile-id/start"
+curl -X POST "http://localhost:8091/profiles/your-profile-id/start"
 ```
 
 成功响应：
@@ -238,7 +238,7 @@ curl -X POST "http://localhost:8080/profiles/your-profile-id/start"
 请求示例：
 
 ```bash
-curl -X POST "http://localhost:8080/profiles/your-profile-id/stop"
+curl -X POST "http://localhost:8091/profiles/your-profile-id/stop"
 ```
 
 成功响应：
@@ -268,7 +268,7 @@ curl -X POST "http://localhost:8080/profiles/your-profile-id/stop"
 请求示例：
 
 ```bash
-curl "http://localhost:8080/drivers/115/capabilities"
+curl "http://localhost:8091/drivers/115/capabilities"
 ```
 
 成功响应：
@@ -315,7 +315,7 @@ curl "http://localhost:8080/drivers/115/capabilities"
 请求示例：
 
 ```bash
-curl -X POST "http://localhost:8080/drivers/115/offline/add" \
+curl -X POST "http://localhost:8091/drivers/115/offline/add" \
   -H "X-Profile-ID: your-profile-id" \
   -H "Content-Type: application/json" \
   -d '{
@@ -337,7 +337,7 @@ curl -X POST "http://localhost:8080/drivers/115/offline/add" \
 请求示例：
 
 ```bash
-curl "http://localhost:8080/drivers/115/offline/tasks" \
+curl "http://localhost:8091/drivers/115/offline/tasks" \
   -H "X-Profile-ID: your-profile-id"
 ```
 
@@ -367,7 +367,7 @@ curl "http://localhost:8080/drivers/115/offline/tasks" \
 请求示例：
 
 ```bash
-curl "http://localhost:8080/drivers/115/offline/tasks/115:xxxx" \
+curl "http://localhost:8091/drivers/115/offline/tasks/115:xxxx" \
   -H "X-Profile-ID: your-profile-id"
 ```
 
@@ -380,7 +380,7 @@ curl "http://localhost:8080/drivers/115/offline/tasks/115:xxxx" \
 请求示例：
 
 ```bash
-curl -X DELETE "http://localhost:8080/drivers/115/offline/tasks/115:xxxx" \
+curl -X DELETE "http://localhost:8091/drivers/115/offline/tasks/115:xxxx" \
   -H "X-Profile-ID: your-profile-id"
 ```
 
@@ -427,7 +427,7 @@ curl -X DELETE "http://localhost:8080/drivers/115/offline/tasks/115:xxxx" \
 请求示例：
 
 ```bash
-curl -X POST "http://localhost:8080/drivers/115/fs/mkdir" \
+curl -X POST "http://localhost:8091/drivers/115/fs/mkdir" \
   -H "X-Profile-ID: your-profile-id" \
   -H "Content-Type: application/json" \
   -d '{"path": "/manual-test/new-folder"}'
@@ -458,7 +458,7 @@ curl -X POST "http://localhost:8080/drivers/115/fs/mkdir" \
 请求示例：
 
 ```bash
-curl -X DELETE "http://localhost:8080/drivers/115/fs/remove" \
+curl -X DELETE "http://localhost:8091/drivers/115/fs/remove" \
   -H "X-Profile-ID: your-profile-id" \
   -H "Content-Type: application/json" \
   -d '{"path": "/manual-test/new-folder"}'
@@ -490,7 +490,7 @@ curl -X DELETE "http://localhost:8080/drivers/115/fs/remove" \
 请求示例：
 
 ```bash
-curl -X POST "http://localhost:8080/drivers/115/fs/move" \
+curl -X POST "http://localhost:8091/drivers/115/fs/move" \
   -H "X-Profile-ID: your-profile-id" \
   -H "Content-Type: application/json" \
   -d '{"src": "/manual-test/a.txt", "dst": "/manual-test/sub/a.txt"}'
@@ -522,7 +522,7 @@ curl -X POST "http://localhost:8080/drivers/115/fs/move" \
 请求示例：
 
 ```bash
-curl -X POST "http://localhost:8080/drivers/115/fs/rename" \
+curl -X POST "http://localhost:8091/drivers/115/fs/rename" \
   -H "X-Profile-ID: your-profile-id" \
   -H "Content-Type: application/json" \
   -d '{"path": "/manual-test/old-name", "new_name": "new-name"}'
@@ -553,7 +553,7 @@ Query 参数：
 请求示例：
 
 ```bash
-curl "http://localhost:8080/drivers/115/fs/list?path=/" \
+curl "http://localhost:8091/drivers/115/fs/list?path=/" \
   -H "X-Profile-ID: your-profile-id"
 ```
 
@@ -584,7 +584,7 @@ Query 参数：
 请求示例：
 
 ```bash
-curl "http://localhost:8080/drivers/115/fs/search?keyword=movie" \
+curl "http://localhost:8091/drivers/115/fs/search?keyword=movie" \
   -H "X-Profile-ID: your-profile-id"
 ```
 
@@ -620,14 +620,14 @@ Query 参数：
 按文件 ID 请求：
 
 ```bash
-curl "http://localhost:8080/drivers/115/media/url?file_id=your-file-id" \
+curl "http://localhost:8091/drivers/115/media/url?file_id=your-file-id" \
   -H "X-Profile-ID: your-profile-id"
 ```
 
 按路径请求：
 
 ```bash
-curl "http://localhost:8080/drivers/115/media/url?path=/manual-test/a.txt" \
+curl "http://localhost:8091/drivers/115/media/url?path=/manual-test/a.txt" \
   -H "X-Profile-ID: your-profile-id"
 ```
 

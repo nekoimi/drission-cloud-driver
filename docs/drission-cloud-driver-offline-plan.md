@@ -603,7 +603,7 @@ GET    /drivers/:platform/media/url
 4. 设置 `get-magnet` 环境变量：
 
 ```text
-CLOUD_DRIVER_BASE_URL=http://localhost:8080
+CLOUD_DRIVER_BASE_URL=http://localhost:8091
 CLOUD_DRIVER_PLATFORM=115
 CLOUD_DRIVER_PROFILE_ID=<profile-id>
 CLOUD_DRIVER_SAVE_ROOT=/get-magnet

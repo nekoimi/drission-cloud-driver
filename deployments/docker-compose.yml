@@ -14,7 +14,7 @@ services:
     ports:
       # Production deployments should normally expose the service through Nginx,
       # Caddy, Traefik, or another reverse proxy on the same host.
-      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:8091:8091"
 
     environment:
       TZ: Asia/Shanghai
@@ -34,7 +34,7 @@ services:
         target: /app/data
 
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/health >/dev/null || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8091/health >/dev/null || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3

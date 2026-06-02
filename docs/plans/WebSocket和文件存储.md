@@ -52,7 +52,7 @@ go get github.com/gorilla/websocket
 
 ```yaml
 server:
-  port: 8080
+  port: 8091
   mode: debug
 
 # ... 原有 database、jwt 配置
@@ -87,7 +87,7 @@ websocket:
 
 ### 使用示例
 
-- 客户端连接地址：`ws://localhost:8080/ws/v1/chat?token=your-jwt-token`
+- 客户端连接地址：`ws://localhost:8091/ws/v1/chat?token=your-jwt-token`
 - 支持房间（Room）或全局广播（根据需求扩展）。
 - 在 `internal/websocket/manager.go` 中实现广播：`hub.Broadcast(msg)`
 
@@ -164,14 +164,14 @@ go get github.com/minio/minio-go/v7/pkg/credentials
 
 ```yaml
 server:
-  port: 8080
+  port: 8091
   mode: debug
 
 # ... 原有 database、jwt、websocket、scheduler 配置
 
 storage:
   driver: "local"          # 可选值：local | minio
-  base_url: "http://localhost:8080/uploads"   # 公开访问前缀（本地用）
+  base_url: "http://localhost:8091/uploads"   # 公开访问前缀（本地用）
   
   # 本地驱动专用
   local:

@@ -18,7 +18,7 @@ WORKDIR /app
 COPY --from=builder /app/bin/server /app/server
 COPY --from=builder /app/configs /app/configs
 
-EXPOSE 8080
+EXPOSE 8091
 
 ENTRYPOINT ["/app/server"]
 CMD ["--config", "configs/config.prod.yaml"]
