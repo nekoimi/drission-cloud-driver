@@ -5,8 +5,8 @@ services:
     image: drission-cloud-driver:latest
     container_name: drission-cloud-driver
     build:
-      context: ..
-      dockerfile: deployments/Dockerfile
+      context: .
+      dockerfile: Dockerfile
     command: ["--config", "/app/configs/config.prod.yaml"]
     restart: unless-stopped
     init: true
