@@ -78,3 +78,56 @@ func TestOfflineTaskListJSONShape(t *testing.T) {
 		t.Fatalf("legacy tasks field should not be present in %s", string(bytes))
 	}
 }
+
+func TestFileInfoJSONIncludesFileIDAlias(t *testing.T) {
+	file := FileInfo{
+		ID:     "file-1",
+		FileID: "file-1",
+		Name:   "movie.mp4",
+		Path:   "/downloads/movie.mp4",
+		Size:   123,
+	}
+
+	bytes, err := json.Marshal(file)
+	if err != nil {
+		t.Fatalf("marshal FileInfo: %v", err)
+	}
+
+	var got map[string]any
+	if err := json.Unmarshal(bytes, &got); err != nil {
+		t.Fatalf("decode FileInfo JSON: %v", err)
+	}
+	if got["id"] != "file-1" || got["file_id"] != "file-1" {
+		t.Fatalf("file id aliases missing in %s", string(bytes))
+	}
+	if _, ok := got["is_dir"]; !ok {
+		t.Fatalf("is_dir field missing in %s", string(bytes))
+	}
+	if _, ok := got["size"]; !ok {
+		t.Fatalf("size field missing in %s", string(bytes))
+	}
+}
+
+func TestOfflineTaskJSONIncludesEmptyFiles(t *testing.T) {
+	task := OfflineTask{
+		TaskID: "task-1",
+		Status: TaskCompleted,
+	}
+
+	bytes, err := json.Marshal(task)
+	if err != nil {
+		t.Fatalf("marshal OfflineTask: %v", err)
+	}
+
+	var got map[string]any
+	if err := json.Unmarshal(bytes, &got); err != nil {
+		t.Fatalf("decode OfflineTask JSON: %v", err)
+	}
+	files, ok := got["files"].([]any)
+	if !ok {
+		t.Fatalf("files field missing in %s", string(bytes))
+	}
+	if len(files) != 0 {
+		t.Fatalf("files length = %d, want 0", len(files))
+	}
+}

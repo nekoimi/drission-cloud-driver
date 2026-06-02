@@ -197,6 +197,49 @@ func TestGetOfflineTaskFallsBackToStoredRecord(t *testing.T) {
 	}
 }
 
+func TestNormalizeStoredOfflineTaskPrefixesSavePath(t *testing.T) {
+	record := offline.OfflineTaskRecord{
+		SavePath: "/get-magnet/JavDB/2026-06-02",
+	}
+	task := &drivers.OfflineTask{
+		Status: drivers.TaskCompleted,
+		Files: []drivers.FileInfo{{
+			ID:     "file-1",
+			FileID: "file-1",
+			Name:   "ADN-776-C.mp4",
+			Path:   "/ADN-776-C/ADN-776-C.mp4",
+			Size:   123,
+		}},
+	}
+
+	normalizeStoredOfflineTask(&record, task)
+
+	if task.SavePath != record.SavePath {
+		t.Fatalf("SavePath = %q, want %q", task.SavePath, record.SavePath)
+	}
+	wantPath := "/get-magnet/JavDB/2026-06-02/ADN-776-C/ADN-776-C.mp4"
+	if task.Files[0].Path != wantPath {
+		t.Fatalf("file path = %q, want %q", task.Files[0].Path, wantPath)
+	}
+	if task.Files[0].IsDir {
+		t.Fatalf("normalized file should be a leaf file")
+	}
+}
+
+func TestNormalizeStoredOfflineTaskWarnsOnCompletedEmptyFiles(t *testing.T) {
+	record := offline.OfflineTaskRecord{SavePath: "/downloads"}
+	task := &drivers.OfflineTask{
+		Status: drivers.TaskCompleted,
+		Files:  []drivers.FileInfo{},
+	}
+
+	normalizeStoredOfflineTask(&record, task)
+
+	if len(task.Warnings) == 0 {
+		t.Fatalf("warnings is empty, want completed task warning")
+	}
+}
+
 type idempotentDriver struct {
 	addCalls   int
 	queryCalls int

@@ -17,6 +17,7 @@ import (
 )
 
 const platform115 = "115"
+const maxOfflineTaskExpandDepth = 20
 
 // Driver implements the drivers.Driver interface for 115 cloud storage.
 type Driver struct {
@@ -318,9 +319,10 @@ func (d *Driver) Search(ctx context.Context, profileID string, keyword string) (
 	files := make([]drivers.FileInfo, len(result.Files))
 	for i, f := range result.Files {
 		files[i] = drivers.FileInfo{
-			ID:   f.FileID,
-			Name: f.Name,
-			Size: f.Size,
+			ID:     f.FileID,
+			FileID: f.FileID,
+			Name:   f.Name,
+			Size:   f.Size,
 		}
 	}
 
@@ -501,6 +503,7 @@ func joinRemotePath(dirPath string, name string) string {
 func toFileInfo(f driver.File, filePath string) drivers.FileInfo {
 	return drivers.FileInfo{
 		ID:        f.GetID(),
+		FileID:    f.GetID(),
 		Name:      f.Name,
 		Path:      filePath,
 		IsDir:     f.IsDirectory,
@@ -548,18 +551,22 @@ func (d *Driver) locateOfflineTaskFiles(client *driver.Pan115Client, task *drive
 
 	if task.FileId != "" {
 		if file, err := client.GetFile(task.FileId); err == nil && file != nil && file.GetID() != "" {
-			return []drivers.FileInfo{toFileInfo(*file, joinRemotePath("", file.Name))}
+			result := d.expandOfflineTaskEntry(client, *file, "", 0)
+			if len(result) > 0 {
+				return result
+			}
 		}
 	}
 
 	if task.DirId != "" {
 		if files, err := client.List(task.DirId); err == nil && files != nil {
-			result := make([]drivers.FileInfo, 0, len(*files))
+			matched := make([]driver.File, 0, len(*files))
 			for _, file := range *files {
 				if matchesOfflineTaskFile(task, file) {
-					result = append(result, toFileInfo(file, joinRemotePath("", file.Name)))
+					matched = append(matched, file)
 				}
 			}
+			result := d.expandOfflineTaskEntries(client, matched, "")
 			if len(result) > 0 {
 				return result
 			}
@@ -582,10 +589,39 @@ func (d *Driver) locateOfflineTaskFiles(client *driver.Pan115Client, task *drive
 	result := make([]drivers.FileInfo, 0, len(searchResult.Files))
 	for _, file := range searchResult.Files {
 		if matchesOfflineTaskFile(task, file) {
-			result = append(result, toFileInfo(file, joinRemotePath("", file.Name)))
+			result = append(result, d.expandOfflineTaskEntry(client, file, "", 0)...)
 		}
 	}
 
+	return result
+}
+
+func (d *Driver) expandOfflineTaskEntries(client *driver.Pan115Client, entries []driver.File, basePath string) []drivers.FileInfo {
+	result := make([]drivers.FileInfo, 0, len(entries))
+	for _, entry := range entries {
+		result = append(result, d.expandOfflineTaskEntry(client, entry, basePath, 0)...)
+	}
+	return result
+}
+
+func (d *Driver) expandOfflineTaskEntry(client *driver.Pan115Client, entry driver.File, basePath string, depth int) []drivers.FileInfo {
+	entryPath := joinRemotePath(basePath, entry.Name)
+	if !entry.IsDirectory {
+		return []drivers.FileInfo{toFileInfo(entry, entryPath)}
+	}
+	if entry.GetID() == "" || depth >= maxOfflineTaskExpandDepth {
+		return nil
+	}
+
+	files, err := client.List(entry.GetID())
+	if err != nil || files == nil {
+		return nil
+	}
+
+	result := make([]drivers.FileInfo, 0, len(*files))
+	for _, child := range *files {
+		result = append(result, d.expandOfflineTaskEntry(client, child, entryPath, depth+1)...)
+	}
 	return result
 }
 

@@ -135,7 +135,7 @@ func (h *DriverHandler) GetOfflineTask(c *gin.Context) {
 		return
 	}
 
-	h.updateStoredOfflineTask(driver.Platform(), profileID, *task)
+	h.updateStoredOfflineTask(driver.Platform(), profileID, task)
 	response.Success(c, task)
 }
 
@@ -190,6 +190,7 @@ func (h *DriverHandler) refreshOfflineTask(c *gin.Context, driver drivers.Driver
 		return &record.Task
 	}
 
+	normalizeStoredOfflineTask(&record, task)
 	record.Task = *task
 	if err := h.offlineStore.Update(record); err != nil {
 		h.logger.Warn("update offline task store failed",
@@ -222,7 +223,7 @@ func (h *DriverHandler) putOfflineTask(platform, profileID string, req drivers.A
 	}
 }
 
-func (h *DriverHandler) updateStoredOfflineTask(platform, profileID string, task drivers.OfflineTask) {
+func (h *DriverHandler) updateStoredOfflineTask(platform, profileID string, task *drivers.OfflineTask) {
 	if h.offlineStore == nil {
 		return
 	}
@@ -235,13 +236,56 @@ func (h *DriverHandler) updateStoredOfflineTask(platform, profileID string, task
 		return
 	}
 
-	record.Task = task
+	normalizeStoredOfflineTask(&record, task)
+	record.Task = *task
 	if err := h.offlineStore.Update(record); err != nil {
 		h.logger.Warn("update offline task store failed",
 			zap.String("task_id", task.TaskID),
 			zap.Error(err),
 		)
 	}
+}
+
+func normalizeStoredOfflineTask(record *offline.OfflineTaskRecord, task *drivers.OfflineTask) {
+	if record == nil || task == nil {
+		return
+	}
+
+	if task.SavePath == "" {
+		task.SavePath = record.SavePath
+	}
+	if task.SavePath != "" {
+		for i := range task.Files {
+			task.Files[i].Path = prefixOfflineFilePath(task.SavePath, task.Files[i].Path)
+		}
+	}
+	if task.Status == drivers.TaskCompleted && len(task.Files) == 0 {
+		appendOfflineTaskWarning(task, "completed task has no consumable leaf files")
+	}
+}
+
+func appendOfflineTaskWarning(task *drivers.OfflineTask, warning string) {
+	for _, existing := range task.Warnings {
+		if existing == warning {
+			return
+		}
+	}
+	task.Warnings = append(task.Warnings, warning)
+}
+
+func prefixOfflineFilePath(savePath, filePath string) string {
+	savePath = strings.TrimSpace(savePath)
+	filePath = strings.TrimSpace(filePath)
+	if savePath == "" || filePath == "" {
+		return filePath
+	}
+
+	savePath = "/" + strings.Trim(strings.ReplaceAll(savePath, "\\", "/"), "/")
+	filePath = "/" + strings.Trim(strings.ReplaceAll(filePath, "\\", "/"), "/")
+	if strings.EqualFold(filePath, savePath) || strings.HasPrefix(strings.ToLower(filePath), strings.ToLower(savePath)+"/") {
+		return filePath
+	}
+	return savePath + filePath
 }
 
 func (h *DriverHandler) getStoredOfflineTask(platform, profileID, taskID string) (drivers.OfflineTask, bool) {
@@ -258,8 +302,8 @@ func (h *DriverHandler) getStoredOfflineTask(platform, profileID, taskID string)
 }
 
 func (h *DriverHandler) updateStoredOfflineTasks(platform, profileID string, tasks []drivers.OfflineTask) {
-	for _, task := range tasks {
-		h.updateStoredOfflineTask(platform, profileID, task)
+	for i := range tasks {
+		h.updateStoredOfflineTask(platform, profileID, &tasks[i])
 	}
 }
 
