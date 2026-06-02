@@ -125,7 +125,9 @@ func (c *Client) do(ctx context.Context, method, path string, body any, result a
 	if err != nil {
 		return fmt.Errorf("do request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode >= 400 {
 		return fmt.Errorf("cloak API error: status %d", resp.StatusCode)
