@@ -2,6 +2,7 @@ package pan115
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path"
 	"strings"
@@ -426,12 +427,22 @@ func (d *Driver) ensureDir(ctx context.Context, client *driver.Pan115Client, rem
 
 		dirID, err := client.Mkdir(parentID, part)
 		if err != nil {
+			if isTargetAlreadyExists(err) {
+				if dirID, resolveErr := d.resolveDirID(client, currentPath); resolveErr == nil {
+					parentID = dirID
+					continue
+				}
+			}
 			return "", fmt.Errorf("create dir %s: %w", currentPath, err)
 		}
 		parentID = dirID
 	}
 
 	return parentID, nil
+}
+
+func isTargetAlreadyExists(err error) bool {
+	return errors.Is(err, driver.ErrExist)
 }
 
 func (d *Driver) resolvePath(client *driver.Pan115Client, remotePath string) (string, bool, error) {

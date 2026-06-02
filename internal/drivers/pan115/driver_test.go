@@ -1,6 +1,7 @@
 package pan115
 
 import (
+	"fmt"
 	"testing"
 
 	pan115driver "github.com/SheltonZhu/115driver/pkg/driver"
@@ -51,6 +52,15 @@ func TestToOfflineTaskBuildsUnifiedTaskID(t *testing.T) {
 	}
 	if got.Progress != 0.42 {
 		t.Fatalf("Progress = %v, want 0.42", got.Progress)
+	}
+}
+
+func TestIsTargetAlreadyExists(t *testing.T) {
+	if !isTargetAlreadyExists(fmt.Errorf("create dir path: %w", pan115driver.ErrExist)) {
+		t.Fatalf("isTargetAlreadyExists() = false, want true")
+	}
+	if isTargetAlreadyExists(fmt.Errorf("create dir path: %w", pan115driver.ErrNotExist)) {
+		t.Fatalf("isTargetAlreadyExists() = true, want false")
 	}
 }
 
