@@ -2,14 +2,19 @@ package pan115
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
+	"os"
 	"path"
+	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/SheltonZhu/115driver/pkg/driver"
 	"go.uber.org/zap"
+	_ "modernc.org/sqlite"
 
 	"github.com/nekoimi/drission-cloud-driver/internal/browser"
 	"github.com/nekoimi/drission-cloud-driver/internal/drivers"
@@ -19,18 +24,27 @@ import (
 
 const platform115 = "115"
 const maxOfflineTaskExpandDepth = 20
+const dirIDCacheTimeFormat = time.RFC3339Nano
 
 // Driver implements the drivers.Driver interface for 115 cloud storage.
 type Driver struct {
 	base.Base
-	clients map[string]*driver.Pan115Client // profileID -> client
-	mu      sync.RWMutex
+	clients      map[string]*driver.Pan115Client // profileID -> client
+	dirIDCache   map[string]string               // profileID + path -> dirID
+	dirIDCacheDB *sql.DB
+	mu           sync.RWMutex
 }
 
 // NewFactory creates a new 115 driver factory.
 func NewFactory() drivers.Factory {
+	return NewFactoryWithDirIDCacheDSN("")
+}
+
+// NewFactoryWithDirIDCacheDSN creates a 115 driver factory with a persistent
+// SQLite directory-id cache.
+func NewFactoryWithDirIDCacheDSN(cacheDSN string) drivers.Factory {
 	return func(browserMgr *browser.Manager, logger *zap.Logger) (drivers.Driver, error) {
-		return &Driver{
+		d := &Driver{
 			Base: base.Base{
 				Platform_: platform115,
 				Capabilities_: drivers.DriverCapabilities{
@@ -42,9 +56,22 @@ func NewFactory() drivers.Factory {
 				BrowserMgr: browserMgr,
 				Logger:     logger,
 			},
-			clients: make(map[string]*driver.Pan115Client),
-		}, nil
+			clients:    make(map[string]*driver.Pan115Client),
+			dirIDCache: make(map[string]string),
+		}
+		if err := d.openDirIDCache(cacheDSN); err != nil {
+			return nil, err
+		}
+		return d, nil
 	}
+}
+
+// Close releases resources held by the driver.
+func (d *Driver) Close() error {
+	if d == nil || d.dirIDCacheDB == nil {
+		return nil
+	}
+	return d.dirIDCacheDB.Close()
 }
 
 // getClient returns a 115 client for the given profile, creating it if necessary.
@@ -111,7 +138,7 @@ func (d *Driver) AddOfflineTask(ctx context.Context, profileID string, req *driv
 	saveDirID := "0"
 	if strings.TrimSpace(req.SavePath) != "" {
 		var err error
-		saveDirID, err = d.ensureDir(ctx, client, req.SavePath)
+		saveDirID, err = d.ensureDir(ctx, profileID, client, req.SavePath)
 		if err != nil {
 			return nil, err
 		}
@@ -205,7 +232,7 @@ func (d *Driver) Mkdir(ctx context.Context, profileID string, parentPath string,
 		return err
 	}
 
-	_, err = d.ensureDir(ctx, client, joinRemotePath(parentPath, name))
+	_, err = d.ensureDir(ctx, profileID, client, joinRemotePath(parentPath, name))
 	return err
 }
 
@@ -216,7 +243,7 @@ func (d *Driver) Remove(ctx context.Context, profileID string, path string) erro
 		return err
 	}
 
-	fileID, _, err := d.resolvePath(client, path)
+	fileID, _, err := d.resolvePath(profileID, client, path)
 	if err != nil {
 		return err
 	}
@@ -237,7 +264,7 @@ func (d *Driver) Move(ctx context.Context, profileID string, src string, dst str
 		return err
 	}
 
-	fileID, _, err := d.resolvePath(client, src)
+	fileID, _, err := d.resolvePath(profileID, client, src)
 	if err != nil {
 		return err
 	}
@@ -245,7 +272,7 @@ func (d *Driver) Move(ctx context.Context, profileID string, src string, dst str
 		return fmt.Errorf("cannot move root directory")
 	}
 
-	dstDirID, err := d.resolveDirID(client, dst)
+	dstDirID, err := d.resolveDirID(profileID, client, dst)
 	if err != nil {
 		return err
 	}
@@ -263,7 +290,7 @@ func (d *Driver) Rename(ctx context.Context, profileID string, path string, newN
 		return err
 	}
 
-	fileID, _, err := d.resolvePath(client, path)
+	fileID, _, err := d.resolvePath(profileID, client, path)
 	if err != nil {
 		return err
 	}
@@ -284,7 +311,7 @@ func (d *Driver) List(ctx context.Context, profileID string, dirPath string) ([]
 		return nil, err
 	}
 
-	dirID, err := d.resolveDirID(client, dirPath)
+	dirID, err := d.resolveDirID(profileID, client, dirPath)
 	if err != nil {
 		return nil, err
 	}
@@ -337,7 +364,7 @@ func (d *Driver) GetDownloadURL(ctx context.Context, profileID string, path stri
 		return "", err
 	}
 
-	file, err := d.resolveFile(client, path)
+	file, err := d.resolveFile(profileID, client, path)
 	if err != nil {
 		return "", err
 	}
@@ -387,24 +414,221 @@ func (d *Driver) getDownloadURLForFile(client *driver.Pan115Client, file *driver
 	return info.Url.Url, nil
 }
 
-func (d *Driver) resolveDirID(client *driver.Pan115Client, remotePath string) (string, error) {
+func (d *Driver) resolveDirID(profileID string, client *driver.Pan115Client, remotePath string) (string, error) {
 	cleaned := cleanRemotePath(remotePath)
 	if cleaned == "" {
 		return "0", nil
 	}
 
+	if dirID, ok := d.getCachedDirID(profileID, cleaned); ok {
+		return dirID, nil
+	}
+
 	resp, err := client.DirName2CID(cleaned)
 	if err != nil {
+		if dirID, fallbackErr := d.resolveDirIDByList(client, cleaned); fallbackErr == nil {
+			d.setCachedDirID(profileID, cleaned, dirID)
+			return dirID, nil
+		}
 		return "", fmt.Errorf("resolve dir path %s: %w", remotePath, err)
 	}
 	if string(resp.CategoryID) == "0" {
+		if dirID, fallbackErr := d.resolveDirIDByList(client, cleaned); fallbackErr == nil {
+			d.setCachedDirID(profileID, cleaned, dirID)
+			return dirID, nil
+		}
 		return "", fmt.Errorf("directory not found: %s", remotePath)
 	}
 
-	return string(resp.CategoryID), nil
+	dirID := string(resp.CategoryID)
+	d.setCachedDirID(profileID, cleaned, dirID)
+	return dirID, nil
 }
 
-func (d *Driver) ensureDir(ctx context.Context, client *driver.Pan115Client, remotePath string) (string, error) {
+func (d *Driver) resolveDirIDByList(client *driver.Pan115Client, remotePath string) (string, error) {
+	cleaned := cleanRemotePath(remotePath)
+	if cleaned == "" {
+		return "0", nil
+	}
+
+	parentID := "0"
+	parts := strings.Split(cleaned, "/")
+	for i, part := range parts {
+		files, err := client.List(parentID)
+		if err != nil {
+			currentPath := strings.Join(parts[:i+1], "/")
+			return "", fmt.Errorf("list parent directory for %s: %w", currentPath, err)
+		}
+
+		found := false
+		for _, f := range *files {
+			if f.IsDirectory && f.Name == part {
+				parentID = f.GetID()
+				found = true
+				break
+			}
+		}
+		if !found {
+			return "", fmt.Errorf("directory not found: %s", remotePath)
+		}
+	}
+
+	return parentID, nil
+}
+
+func (d *Driver) openDirIDCache(dsn string) error {
+	dsn = strings.TrimSpace(dsn)
+	if dsn == "" {
+		return nil
+	}
+	if err := ensureDirIDCacheSQLiteDir(dsn); err != nil {
+		return err
+	}
+
+	db, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		return fmt.Errorf("open pan115 dir id cache: %w", err)
+	}
+
+	if _, err := db.Exec(`PRAGMA journal_mode = WAL`); err != nil {
+		_ = db.Close()
+		return fmt.Errorf("set pan115 dir id cache journal mode: %w", err)
+	}
+	if _, err := db.Exec(`PRAGMA busy_timeout = 5000`); err != nil {
+		_ = db.Close()
+		return fmt.Errorf("set pan115 dir id cache busy timeout: %w", err)
+	}
+	if _, err := db.Exec(`
+CREATE TABLE IF NOT EXISTS pan115_dir_id_cache (
+    profile_id TEXT NOT NULL,
+    path TEXT NOT NULL,
+    dir_id TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (profile_id, path)
+);
+`); err != nil {
+		_ = db.Close()
+		return fmt.Errorf("migrate pan115 dir id cache: %w", err)
+	}
+
+	d.dirIDCacheDB = db
+	return nil
+}
+
+func (d *Driver) getCachedDirID(profileID string, remotePath string) (string, bool) {
+	key := dirIDCacheKey(profileID, remotePath)
+	d.mu.RLock()
+	dirID, ok := d.dirIDCache[key]
+	d.mu.RUnlock()
+	if ok {
+		return dirID, true
+	}
+
+	cleaned := cleanRemotePath(remotePath)
+	if d.dirIDCacheDB == nil || strings.TrimSpace(profileID) == "" || cleaned == "" {
+		return "", false
+	}
+
+	row := d.dirIDCacheDB.QueryRow(`
+SELECT dir_id
+FROM pan115_dir_id_cache
+WHERE profile_id = ? AND path = ?
+`, profileID, cleaned)
+	if err := row.Scan(&dirID); err != nil {
+		return "", false
+	}
+
+	d.setCachedDirIDMemory(profileID, cleaned, dirID)
+	return dirID, true
+}
+
+func (d *Driver) setCachedDirID(profileID string, remotePath string, dirID string) {
+	cleaned := cleanRemotePath(remotePath)
+	if strings.TrimSpace(profileID) == "" || cleaned == "" || dirID == "" {
+		return
+	}
+
+	d.setCachedDirIDMemory(profileID, cleaned, dirID)
+
+	if d.dirIDCacheDB == nil {
+		return
+	}
+
+	now := time.Now().Format(dirIDCacheTimeFormat)
+	_, err := d.dirIDCacheDB.Exec(`
+INSERT INTO pan115_dir_id_cache (
+    profile_id, path, dir_id, created_at, updated_at
+) VALUES (?, ?, ?, ?, ?)
+ON CONFLICT(profile_id, path) DO UPDATE SET
+    dir_id = excluded.dir_id,
+    updated_at = excluded.updated_at
+`, profileID, cleaned, dirID, now, now)
+	if err != nil && d.Logger != nil {
+		d.Logger.Warn("save pan115 dir id cache failed",
+			zap.String("profile", profileID),
+			zap.String("path", cleaned),
+			zap.String("dir_id", dirID),
+			zap.Error(err),
+		)
+	}
+}
+
+func (d *Driver) setCachedDirIDMemory(profileID string, remotePath string, dirID string) {
+	cleaned := cleanRemotePath(remotePath)
+	if strings.TrimSpace(profileID) == "" || cleaned == "" || dirID == "" {
+		return
+	}
+
+	d.mu.Lock()
+	if d.dirIDCache == nil {
+		d.dirIDCache = make(map[string]string)
+	}
+	d.dirIDCache[dirIDCacheKey(profileID, cleaned)] = dirID
+	d.mu.Unlock()
+}
+
+func dirIDCacheKey(profileID string, remotePath string) string {
+	return profileID + "\x00" + cleanRemotePath(remotePath)
+}
+
+func ensureDirIDCacheSQLiteDir(dsn string) error {
+	if dsn == ":memory:" || strings.HasPrefix(dsn, "file:") {
+		return nil
+	}
+
+	dir := filepath.Dir(dsn)
+	if dir == "." || dir == "" {
+		return nil
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("create pan115 dir id cache directory: %w", err)
+	}
+	return nil
+}
+
+// DirName2CID directly calls 115's files/getid endpoint for debugging.
+func (d *Driver) DirName2CID(ctx context.Context, profileID string, remotePath string) (*drivers.DirName2CIDResult, error) {
+	client, err := d.getClient(ctx, profileID)
+	if err != nil {
+		return nil, err
+	}
+
+	cleaned := cleanRemotePath(remotePath)
+	resp, err := client.DirName2CID(cleaned)
+	if err != nil {
+		return nil, fmt.Errorf("dirname2cid %s: %w", cleaned, err)
+	}
+
+	return &drivers.DirName2CIDResult{
+		Path:       remotePath,
+		Cleaned:    cleaned,
+		CategoryID: string(resp.CategoryID),
+		IsPrivate:  string(resp.IsPrivate),
+	}, nil
+}
+
+func (d *Driver) ensureDir(ctx context.Context, profileID string, client *driver.Pan115Client, remotePath string) (string, error) {
 	_ = ctx
 
 	cleaned := cleanRemotePath(remotePath)
@@ -412,7 +636,7 @@ func (d *Driver) ensureDir(ctx context.Context, client *driver.Pan115Client, rem
 		return "0", nil
 	}
 
-	if dirID, err := d.resolveDirID(client, cleaned); err == nil {
+	if dirID, err := d.resolveDirID(profileID, client, cleaned); err == nil {
 		return dirID, nil
 	}
 
@@ -420,7 +644,7 @@ func (d *Driver) ensureDir(ctx context.Context, client *driver.Pan115Client, rem
 	parts := strings.Split(cleaned, "/")
 	for i, part := range parts {
 		currentPath := strings.Join(parts[:i+1], "/")
-		if dirID, err := d.resolveDirID(client, currentPath); err == nil {
+		if dirID, err := d.resolveDirID(profileID, client, currentPath); err == nil {
 			parentID = dirID
 			continue
 		}
@@ -428,13 +652,14 @@ func (d *Driver) ensureDir(ctx context.Context, client *driver.Pan115Client, rem
 		dirID, err := client.Mkdir(parentID, part)
 		if err != nil {
 			if isTargetAlreadyExists(err) {
-				if dirID, resolveErr := d.resolveDirID(client, currentPath); resolveErr == nil {
+				if dirID, resolveErr := d.resolveDirID(profileID, client, currentPath); resolveErr == nil {
 					parentID = dirID
 					continue
 				}
 			}
 			return "", fmt.Errorf("create dir %s: %w", currentPath, err)
 		}
+		d.setCachedDirID(profileID, currentPath, dirID)
 		parentID = dirID
 	}
 
@@ -445,23 +670,23 @@ func isTargetAlreadyExists(err error) bool {
 	return errors.Is(err, driver.ErrExist)
 }
 
-func (d *Driver) resolvePath(client *driver.Pan115Client, remotePath string) (string, bool, error) {
+func (d *Driver) resolvePath(profileID string, client *driver.Pan115Client, remotePath string) (string, bool, error) {
 	if remotePath == "" || remotePath == "/" {
 		return "0", true, nil
 	}
 
-	if dirID, err := d.resolveDirID(client, remotePath); err == nil && dirID != "" && dirID != "0" {
+	if dirID, err := d.resolveDirID(profileID, client, remotePath); err == nil && dirID != "" && dirID != "0" {
 		return dirID, true, nil
 	}
 
-	file, err := d.resolveFile(client, remotePath)
+	file, err := d.resolveFile(profileID, client, remotePath)
 	if err != nil {
 		return "", false, err
 	}
 	return file.GetID(), file.IsDirectory, nil
 }
 
-func (d *Driver) resolveFile(client *driver.Pan115Client, remotePath string) (*driver.File, error) {
+func (d *Driver) resolveFile(profileID string, client *driver.Pan115Client, remotePath string) (*driver.File, error) {
 	cleaned := cleanRemotePath(remotePath)
 	if cleaned == "" {
 		return nil, fmt.Errorf("file path is required")
@@ -475,7 +700,7 @@ func (d *Driver) resolveFile(client *driver.Pan115Client, remotePath string) (*d
 
 	parentID := "0"
 	if parentPath != "." && parentPath != "/" {
-		dirID, err := d.resolveDirID(client, parentPath)
+		dirID, err := d.resolveDirID(profileID, client, parentPath)
 		if err != nil {
 			return nil, err
 		}

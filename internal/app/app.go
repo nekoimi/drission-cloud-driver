@@ -58,7 +58,7 @@ func Initialize(configPath string) (*App, func(), error) {
 	for _, platform := range cfg.Drivers.Platforms {
 		switch platform {
 		case "115":
-			registry.Register("115", pan115.NewFactory())
+			registry.Register("115", pan115.NewFactoryWithDirIDCacheDSN(cfg.Offline.Store.DSN))
 			// Add more platforms here
 			// case "pikpak":
 			//     registry.Register("pikpak", pikpak.NewFactory())
@@ -92,6 +92,9 @@ func Initialize(configPath string) (*App, func(), error) {
 		}
 		if err := browserMgr.Shutdown(); err != nil {
 			log.Warn("failed to shutdown browser manager", zap.Error(err))
+		}
+		if err := registry.Close(); err != nil {
+			log.Warn("failed to close driver registry", zap.Error(err))
 		}
 		_ = log.Sync()
 	}

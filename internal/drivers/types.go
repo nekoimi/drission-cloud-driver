@@ -78,3 +78,12 @@ type DriverCapabilities struct {
 	DirectLink      bool `json:"direct_link"`
 	MediaInfo       bool `json:"media_info"`
 }
+
+// DirName2CIDResult is the raw-ish result returned by a provider path-to-dir-id
+// lookup endpoint.
+type DirName2CIDResult struct {
+	Path       string `json:"path"`
+	Cleaned    string `json:"cleaned"`
+	CategoryID string `json:"category_id"`
+	IsPrivate  string `json:"is_private,omitempty"`
+}

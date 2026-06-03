@@ -479,6 +479,36 @@ func (h *DriverHandler) Search(c *gin.Context) {
 	response.Success(c, gin.H{"files": files})
 }
 
+// DirName2CID calls the provider path-to-directory-id endpoint for debugging.
+func (h *DriverHandler) DirName2CID(c *gin.Context) {
+	driver, profileID, err := h.getDriver(c)
+	if err != nil {
+		appError(c, err)
+		return
+	}
+
+	tester, ok := driver.(drivers.DirName2CIDTester)
+	if !ok {
+		badRequest(c, "dirname2cid is not supported by this driver")
+		return
+	}
+
+	remotePath := strings.TrimSpace(c.Query("path"))
+	if remotePath == "" {
+		badRequest(c, "path is required")
+		return
+	}
+
+	result, err := tester.DirName2CID(c.Request.Context(), profileID, remotePath)
+	if err != nil {
+		h.logger.Error("dirname2cid failed", zap.Error(err))
+		operationFailed(c, err)
+		return
+	}
+
+	response.Success(c, result)
+}
+
 // GetDownloadURL returns the download URL for a file.
 func (h *DriverHandler) GetDownloadURL(c *gin.Context) {
 	driver, profileID, err := h.getDriver(c)

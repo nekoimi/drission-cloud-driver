@@ -71,6 +71,7 @@ func SetupRouter(cfg *config.Config, logger *zap.Logger, browserMgr *browser.Man
 				fs.POST("/rename", driverHandler.Rename)
 				fs.GET("/list", driverHandler.List)
 				fs.GET("/search", driverHandler.Search)
+				fs.GET("/dirname2cid", driverHandler.DirName2CID)
 			}
 
 			// Media
