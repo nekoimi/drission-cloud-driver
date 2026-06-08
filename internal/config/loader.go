@@ -60,5 +60,9 @@ func DefaultConfig() *Config {
 			RPS:     100,
 			Burst:   200,
 		},
+		Modules: ModulesConfig{
+			"browser": {Enabled: true},
+			"driver":  {Enabled: true},
+		},
 	}
 }

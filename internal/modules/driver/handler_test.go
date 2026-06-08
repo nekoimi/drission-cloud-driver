@@ -1,4 +1,4 @@
-package v1
+package driver
 
 import (
 	"bytes"
@@ -106,7 +106,7 @@ func TestAddOfflineTaskIsIdempotentByClientTaskID(t *testing.T) {
 		return fake, nil
 	})
 
-	handler := NewDriverHandler(registry, nil, offline.NewMemoryStore(), zap.NewNop())
+	handler := newDriverHandler(registry, nil, offline.NewMemoryStore(), zap.NewNop())
 	router := gin.New()
 	router.POST("/drivers/:platform/offline/add", handler.AddOfflineTask)
 
@@ -173,7 +173,7 @@ func TestGetOfflineTaskFallsBackToStoredRecord(t *testing.T) {
 		return fake, nil
 	})
 
-	handler := NewDriverHandler(registry, nil, store, zap.NewNop())
+	handler := newDriverHandler(registry, nil, store, zap.NewNop())
 	router := gin.New()
 	router.GET("/drivers/:platform/offline/tasks/:id", handler.GetOfflineTask)
 

@@ -1,7 +1,8 @@
-package v1
+package driver
 
 import (
 	"fmt"
+	"net/http"
 	"path"
 	"strings"
 	"sync"
@@ -16,8 +17,28 @@ import (
 	"github.com/nekoimi/drission-cloud-driver/internal/pkg/response"
 )
 
-// DriverHandler handles driver API endpoints.
-type DriverHandler struct {
+// systemHandler handles system-related endpoints.
+type systemHandler struct {
+	registry *drivers.Registry
+	logger   *zap.Logger
+}
+
+func newSystemHandler(registry *drivers.Registry, logger *zap.Logger) *systemHandler {
+	return &systemHandler{
+		registry: registry,
+		logger:   logger,
+	}
+}
+
+func (h *systemHandler) ListDrivers(c *gin.Context) {
+	platforms := h.registry.ListPlatforms()
+	response.Success(c, gin.H{
+		"drivers": platforms,
+	})
+}
+
+// driverHandler handles driver API endpoints.
+type driverHandler struct {
 	registry      *drivers.Registry
 	browserMgr    *browser.Manager
 	offlineStore  offline.Store
@@ -25,9 +46,8 @@ type DriverHandler struct {
 	logger        *zap.Logger
 }
 
-// NewDriverHandler creates a new driver handler.
-func NewDriverHandler(registry *drivers.Registry, browserMgr *browser.Manager, offlineStore offline.Store, logger *zap.Logger) *DriverHandler {
-	return &DriverHandler{
+func newDriverHandler(registry *drivers.Registry, browserMgr *browser.Manager, offlineStore offline.Store, logger *zap.Logger) *driverHandler {
+	return &driverHandler{
 		registry:     registry,
 		browserMgr:   browserMgr,
 		offlineStore: offlineStore,
@@ -35,8 +55,7 @@ func NewDriverHandler(registry *drivers.Registry, browserMgr *browser.Manager, o
 	}
 }
 
-// getDriver extracts the platform from the URL and returns the driver.
-func (h *DriverHandler) getDriver(c *gin.Context) (drivers.Driver, string, error) {
+func (h *driverHandler) getDriver(c *gin.Context) (drivers.Driver, string, error) {
 	platform := c.Param("platform")
 	profileID := c.GetHeader("X-Profile-ID")
 	if profileID == "" {
@@ -54,8 +73,7 @@ func (h *DriverHandler) getDriver(c *gin.Context) (drivers.Driver, string, error
 	return driver, profileID, nil
 }
 
-// GetCapabilities returns the capabilities of a driver.
-func (h *DriverHandler) GetCapabilities(c *gin.Context) {
+func (h *driverHandler) GetCapabilities(c *gin.Context) {
 	platform := c.Param("platform")
 	driver, err := h.registry.Get(platform, h.browserMgr)
 	if err != nil {
@@ -74,8 +92,7 @@ func (h *DriverHandler) GetCapabilities(c *gin.Context) {
 	})
 }
 
-// AddOfflineTask adds an offline download task.
-func (h *DriverHandler) AddOfflineTask(c *gin.Context) {
+func (h *driverHandler) AddOfflineTask(c *gin.Context) {
 	driver, profileID, err := h.getDriver(c)
 	if err != nil {
 		appError(c, err)
@@ -111,8 +128,7 @@ func (h *DriverHandler) AddOfflineTask(c *gin.Context) {
 	response.Success(c, task)
 }
 
-// GetOfflineTask returns the status of an offline download task.
-func (h *DriverHandler) GetOfflineTask(c *gin.Context) {
+func (h *driverHandler) GetOfflineTask(c *gin.Context) {
 	driver, profileID, err := h.getDriver(c)
 	if err != nil {
 		appError(c, err)
@@ -139,8 +155,7 @@ func (h *DriverHandler) GetOfflineTask(c *gin.Context) {
 	response.Success(c, task)
 }
 
-// RemoveOfflineTask removes an offline download task.
-func (h *DriverHandler) RemoveOfflineTask(c *gin.Context) {
+func (h *driverHandler) RemoveOfflineTask(c *gin.Context) {
 	driver, profileID, err := h.getDriver(c)
 	if err != nil {
 		appError(c, err)
@@ -161,8 +176,7 @@ func (h *DriverHandler) RemoveOfflineTask(c *gin.Context) {
 	})
 }
 
-// ListOfflineTasks lists all offline download tasks.
-func (h *DriverHandler) ListOfflineTasks(c *gin.Context) {
+func (h *driverHandler) ListOfflineTasks(c *gin.Context) {
 	driver, profileID, err := h.getDriver(c)
 	if err != nil {
 		appError(c, err)
@@ -180,7 +194,7 @@ func (h *DriverHandler) ListOfflineTasks(c *gin.Context) {
 	response.Success(c, taskList)
 }
 
-func (h *DriverHandler) refreshOfflineTask(c *gin.Context, driver drivers.Driver, profileID string, record offline.OfflineTaskRecord) *drivers.OfflineTask {
+func (h *driverHandler) refreshOfflineTask(c *gin.Context, driver drivers.Driver, profileID string, record offline.OfflineTaskRecord) *drivers.OfflineTask {
 	task, err := driver.QueryOfflineTask(c.Request.Context(), profileID, record.Task.TaskID)
 	if err != nil {
 		h.logger.Warn("refresh idempotent offline task failed",
@@ -201,7 +215,7 @@ func (h *DriverHandler) refreshOfflineTask(c *gin.Context, driver drivers.Driver
 	return task
 }
 
-func (h *DriverHandler) putOfflineTask(platform, profileID string, req drivers.AddTaskRequest, task drivers.OfflineTask) {
+func (h *driverHandler) putOfflineTask(platform, profileID string, req drivers.AddTaskRequest, task drivers.OfflineTask) {
 	if h.offlineStore == nil {
 		return
 	}
@@ -223,7 +237,7 @@ func (h *DriverHandler) putOfflineTask(platform, profileID string, req drivers.A
 	}
 }
 
-func (h *DriverHandler) updateStoredOfflineTask(platform, profileID string, task *drivers.OfflineTask) {
+func (h *driverHandler) updateStoredOfflineTask(platform, profileID string, task *drivers.OfflineTask) {
 	if h.offlineStore == nil {
 		return
 	}
@@ -288,7 +302,7 @@ func prefixOfflineFilePath(savePath, filePath string) string {
 	return savePath + filePath
 }
 
-func (h *DriverHandler) getStoredOfflineTask(platform, profileID, taskID string) (drivers.OfflineTask, bool) {
+func (h *driverHandler) getStoredOfflineTask(platform, profileID, taskID string) (drivers.OfflineTask, bool) {
 	if h.offlineStore == nil {
 		return drivers.OfflineTask{}, false
 	}
@@ -301,13 +315,13 @@ func (h *DriverHandler) getStoredOfflineTask(platform, profileID, taskID string)
 	return record.Task, true
 }
 
-func (h *DriverHandler) updateStoredOfflineTasks(platform, profileID string, tasks []drivers.OfflineTask) {
+func (h *driverHandler) updateStoredOfflineTasks(platform, profileID string, tasks []drivers.OfflineTask) {
 	for i := range tasks {
 		h.updateStoredOfflineTask(platform, profileID, &tasks[i])
 	}
 }
 
-func (h *DriverHandler) markStoredOfflineTaskCanceled(platform, profileID, taskID string) {
+func (h *driverHandler) markStoredOfflineTaskCanceled(platform, profileID, taskID string) {
 	if h.offlineStore == nil {
 		return
 	}
@@ -326,8 +340,7 @@ func (h *DriverHandler) markStoredOfflineTaskCanceled(platform, profileID, taskI
 	}
 }
 
-// Mkdir creates a new directory.
-func (h *DriverHandler) Mkdir(c *gin.Context) {
+func (h *driverHandler) Mkdir(c *gin.Context) {
 	driver, profileID, err := h.getDriver(c)
 	if err != nil {
 		appError(c, err)
@@ -359,8 +372,7 @@ func (h *DriverHandler) Mkdir(c *gin.Context) {
 	response.Success(c, gin.H{"status": "created"})
 }
 
-// Remove removes a file or directory.
-func (h *DriverHandler) Remove(c *gin.Context) {
+func (h *driverHandler) Remove(c *gin.Context) {
 	driver, profileID, err := h.getDriver(c)
 	if err != nil {
 		appError(c, err)
@@ -384,8 +396,7 @@ func (h *DriverHandler) Remove(c *gin.Context) {
 	response.Success(c, gin.H{"status": "removed"})
 }
 
-// Move moves a file or directory.
-func (h *DriverHandler) Move(c *gin.Context) {
+func (h *driverHandler) Move(c *gin.Context) {
 	driver, profileID, err := h.getDriver(c)
 	if err != nil {
 		appError(c, err)
@@ -410,8 +421,7 @@ func (h *DriverHandler) Move(c *gin.Context) {
 	response.Success(c, gin.H{"status": "moved"})
 }
 
-// Rename renames a file or directory.
-func (h *DriverHandler) Rename(c *gin.Context) {
+func (h *driverHandler) Rename(c *gin.Context) {
 	driver, profileID, err := h.getDriver(c)
 	if err != nil {
 		appError(c, err)
@@ -436,8 +446,7 @@ func (h *DriverHandler) Rename(c *gin.Context) {
 	response.Success(c, gin.H{"status": "renamed"})
 }
 
-// List lists files and directories.
-func (h *DriverHandler) List(c *gin.Context) {
+func (h *driverHandler) List(c *gin.Context) {
 	driver, profileID, err := h.getDriver(c)
 	if err != nil {
 		appError(c, err)
@@ -455,8 +464,7 @@ func (h *DriverHandler) List(c *gin.Context) {
 	response.Success(c, gin.H{"files": files})
 }
 
-// Search searches for files.
-func (h *DriverHandler) Search(c *gin.Context) {
+func (h *driverHandler) Search(c *gin.Context) {
 	driver, profileID, err := h.getDriver(c)
 	if err != nil {
 		appError(c, err)
@@ -479,8 +487,7 @@ func (h *DriverHandler) Search(c *gin.Context) {
 	response.Success(c, gin.H{"files": files})
 }
 
-// DirName2CID calls the provider path-to-directory-id endpoint for debugging.
-func (h *DriverHandler) DirName2CID(c *gin.Context) {
+func (h *driverHandler) DirName2CID(c *gin.Context) {
 	driver, profileID, err := h.getDriver(c)
 	if err != nil {
 		appError(c, err)
@@ -509,8 +516,7 @@ func (h *DriverHandler) DirName2CID(c *gin.Context) {
 	response.Success(c, result)
 }
 
-// GetDownloadURL returns the download URL for a file.
-func (h *DriverHandler) GetDownloadURL(c *gin.Context) {
+func (h *driverHandler) GetDownloadURL(c *gin.Context) {
 	driver, profileID, err := h.getDriver(c)
 	if err != nil {
 		appError(c, err)
@@ -561,4 +567,34 @@ func parseMkdirRequest(requestPath, parentPath, name string) (string, string, er
 	}
 
 	return parentPath, name, nil
+}
+
+func badRequest(c *gin.Context, msg string) {
+	response.ErrorWithMsg(c, http.StatusBadRequest, errcode.ErrInvalidRequest, msg)
+}
+
+func validationError(c *gin.Context, err error) {
+	response.ValidationError(c, err.Error())
+}
+
+func notFound(c *gin.Context, code *errcode.Code, err error) {
+	response.ErrorWithMsg(c, http.StatusNotFound, code, err.Error())
+}
+
+func operationFailed(c *gin.Context, err error) {
+	if appErr, ok := response.IsAppError(err); ok {
+		response.AppErr(c, appErr)
+		return
+	}
+
+	response.ErrorWithMsg(c, http.StatusInternalServerError, errcode.ErrOperationFailed, err.Error())
+}
+
+func appError(c *gin.Context, err error) {
+	if appErr, ok := response.IsAppError(err); ok {
+		response.AppErr(c, appErr)
+		return
+	}
+
+	operationFailed(c, err)
 }

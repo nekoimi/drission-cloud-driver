@@ -31,9 +31,9 @@ RUN apt-get update \
 WORKDIR /app
 
 COPY --from=builder /app/bin/server /app/server
-COPY --from=builder /app/configs /app/configs
+COPY --from=builder /app/config /app/config
 
 EXPOSE 8091
 
 ENTRYPOINT ["/app/server"]
-CMD ["--config", "configs/config.prod.yaml"]
+CMD ["--config", "config/config.prod.yaml"]

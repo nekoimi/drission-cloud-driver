@@ -7,7 +7,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    command: ["--config", "/app/configs/config.prod.yaml"]
+    command: ["--config", "/app/config/config.prod.yaml"]
     restart: unless-stopped
     init: true
 
@@ -25,8 +25,8 @@ services:
       # Mount production config read-only so it can be changed without rebuilding
       # the image. Keep config.prod.yaml in this directory up to date.
       - type: bind
-        source: ../configs
-        target: /app/configs
+        source: ./config
+        target: /app/config
         read_only: true
       # Persist SQLite offline task state across container recreations.
       - type: volume
