@@ -57,12 +57,20 @@ func TestParseMkdirRequestRequiresNameForLegacyFormat(t *testing.T) {
 	}
 }
 
-func TestBadRequestUsesInvalidRequestCode(t *testing.T) {
+func TestHandleWrapsAppError(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	w := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(w)
+	log := zap.NewNop()
 
-	badRequest(c, "missing field")
+	fn := func(c *gin.Context) (any, error) {
+		return nil, errcode.NewWithDetail(errcode.ErrInvalidRequest, "missing field")
+	}
+
+	router := gin.New()
+	router.GET("/test", response.Handle(fn, log))
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	router.ServeHTTP(w, req)
 
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", w.Code, http.StatusBadRequest)
@@ -77,38 +85,47 @@ func TestBadRequestUsesInvalidRequestCode(t *testing.T) {
 	}
 }
 
-func TestOperationFailedPassesThroughAppError(t *testing.T) {
+func TestHandleWrapsGenericError(t *testing.T) {
 	gin.SetMode(gin.TestMode)
+	log := zap.NewNop()
+
+	fn := func(c *gin.Context) (any, error) {
+		return nil, errors.New("something broke")
+	}
+
+	router := gin.New()
+	router.GET("/test", response.Handle(fn, log))
+
 	w := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(w)
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	router.ServeHTTP(w, req)
 
-	operationFailed(c, errcode.NewWithDetail(errcode.ErrTaskNotFound, "task missing"))
-
-	if w.Code != http.StatusNotFound {
-		t.Fatalf("status = %d, want %d", w.Code, http.StatusNotFound)
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusInternalServerError)
 	}
 
 	var got response.APIResponse
 	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if got.Code != errcode.ErrTaskNotFound.Value {
-		t.Fatalf("code = %d, want %d", got.Code, errcode.ErrTaskNotFound.Value)
+	if got.Code != errcode.Internal.Value {
+		t.Fatalf("code = %d, want %d", got.Code, errcode.Internal.Value)
 	}
 }
 
 func TestAddOfflineTaskIsIdempotentByClientTaskID(t *testing.T) {
 	gin.SetMode(gin.TestMode)
+	log := zap.NewNop()
 
 	fake := &idempotentDriver{}
-	registry := drivers.NewRegistry(zap.NewNop())
+	registry := drivers.NewRegistry(log)
 	registry.Register("115", func(*browser.Manager, *zap.Logger) (drivers.Driver, error) {
 		return fake, nil
 	})
 
-	handler := newDriverHandler(registry, nil, offline.NewMemoryStore(), zap.NewNop())
+	handler := newDriverHandler(registry, nil, offline.NewMemoryStore(), log)
 	router := gin.New()
-	router.POST("/drivers/:platform/offline/add", handler.AddOfflineTask)
+	router.POST("/drivers/:platform/offline/add", response.Handle(handler.AddOfflineTask, log))
 
 	body := []byte(`{"url":"magnet:?xt=urn:btih:abc","client_task_id":"client-1","save_path":"/downloads"}`)
 
@@ -154,6 +171,7 @@ func TestAddOfflineTaskIsIdempotentByClientTaskID(t *testing.T) {
 
 func TestGetOfflineTaskFallsBackToStoredRecord(t *testing.T) {
 	gin.SetMode(gin.TestMode)
+	log := zap.NewNop()
 
 	store := offline.NewMemoryStore()
 	if err := store.Put(offline.OfflineTaskRecord{
@@ -168,14 +186,14 @@ func TestGetOfflineTaskFallsBackToStoredRecord(t *testing.T) {
 	}
 
 	fake := &idempotentDriver{queryErr: errors.New("platform task missing")}
-	registry := drivers.NewRegistry(zap.NewNop())
+	registry := drivers.NewRegistry(log)
 	registry.Register("115", func(*browser.Manager, *zap.Logger) (drivers.Driver, error) {
 		return fake, nil
 	})
 
-	handler := newDriverHandler(registry, nil, store, zap.NewNop())
+	handler := newDriverHandler(registry, nil, store, log)
 	router := gin.New()
-	router.GET("/drivers/:platform/offline/tasks/:id", handler.GetOfflineTask)
+	router.GET("/drivers/:platform/offline/tasks/:id", response.Handle(handler.GetOfflineTask, log))
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/drivers/115/offline/tasks/115:abc", nil)

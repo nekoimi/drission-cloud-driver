@@ -5,6 +5,7 @@ import (
 
 	"github.com/nekoimi/drission-cloud-driver/internal/framework"
 	"github.com/nekoimi/drission-cloud-driver/internal/module"
+	"github.com/nekoimi/drission-cloud-driver/internal/pkg/response"
 )
 
 const ModuleName = "driver"
@@ -24,43 +25,44 @@ func (m *driverModule) Register(ctx *framework.ModuleContext) error {
 		return nil
 	}
 
-	systemHandler := newSystemHandler(ctx.DriverRegistry, ctx.Logger)
-	driverHandler := newDriverHandler(ctx.DriverRegistry, ctx.BrowserManager, ctx.OfflineStore, ctx.Logger)
+	sys := newSystemHandler(ctx.DriverRegistry, ctx.Logger)
+	h := newDriverHandler(ctx.DriverRegistry, ctx.BrowserManager, ctx.OfflineStore, ctx.Logger)
+	log := ctx.Logger
 
 	// Driver API
 	api := ctx.Router.Group("/drivers")
 	{
-		api.GET("", systemHandler.ListDrivers)
+		api.GET("", response.Handle(sys.ListDrivers, log))
 
 		d := api.Group("/:platform")
 		{
-			d.GET("/capabilities", driverHandler.GetCapabilities)
+			d.GET("/capabilities", response.Handle(h.GetCapabilities, log))
 
 			// Offline download
 			offlineApi := d.Group("/offline")
 			{
-				offlineApi.POST("/add", driverHandler.AddOfflineTask)
-				offlineApi.GET("/tasks", driverHandler.ListOfflineTasks)
-				offlineApi.GET("/tasks/:id", driverHandler.GetOfflineTask)
-				offlineApi.DELETE("/tasks/:id", driverHandler.RemoveOfflineTask)
+				offlineApi.POST("/add", response.Handle(h.AddOfflineTask, log))
+				offlineApi.GET("/tasks", response.Handle(h.ListOfflineTasks, log))
+				offlineApi.GET("/tasks/:id", response.Handle(h.GetOfflineTask, log))
+				offlineApi.DELETE("/tasks/:id", response.Handle(h.RemoveOfflineTask, log))
 			}
 
 			// File system
 			fs := d.Group("/fs")
 			{
-				fs.POST("/mkdir", driverHandler.Mkdir)
-				fs.DELETE("/remove", driverHandler.Remove)
-				fs.POST("/move", driverHandler.Move)
-				fs.POST("/rename", driverHandler.Rename)
-				fs.GET("/list", driverHandler.List)
-				fs.GET("/search", driverHandler.Search)
-				fs.GET("/dirname2cid", driverHandler.DirName2CID)
+				fs.POST("/mkdir", response.Handle(h.Mkdir, log))
+				fs.DELETE("/remove", response.Handle(h.Remove, log))
+				fs.POST("/move", response.Handle(h.Move, log))
+				fs.POST("/rename", response.Handle(h.Rename, log))
+				fs.GET("/list", response.Handle(h.List, log))
+				fs.GET("/search", response.Handle(h.Search, log))
+				fs.GET("/dirname2cid", response.Handle(h.DirName2CID, log))
 			}
 
 			// Media
 			media := d.Group("/media")
 			{
-				media.GET("/url", driverHandler.GetDownloadURL)
+				media.GET("/url", response.Handle(h.GetDownloadURL, log))
 			}
 		}
 	}

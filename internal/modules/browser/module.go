@@ -5,6 +5,7 @@ import (
 
 	"github.com/nekoimi/drission-cloud-driver/internal/framework"
 	"github.com/nekoimi/drission-cloud-driver/internal/module"
+	"github.com/nekoimi/drission-cloud-driver/internal/pkg/response"
 )
 
 const ModuleName = "browser"
@@ -24,14 +25,14 @@ func (m *browserModule) Register(ctx *framework.ModuleContext) error {
 		return nil
 	}
 
-	handler := newProfileHandler(ctx.BrowserManager, ctx.Logger)
+	h := newProfileHandler(ctx.BrowserManager, ctx.Logger)
 
 	profiles := ctx.Router.Group("/profiles")
 	{
-		profiles.GET("", handler.ListProfiles)
-		profiles.GET("/:id", handler.GetProfile)
-		profiles.POST("/:id/start", handler.StartProfile)
-		profiles.POST("/:id/stop", handler.StopProfile)
+		profiles.GET("", response.Handle(h.ListProfiles, ctx.Logger))
+		profiles.GET("/:id", response.Handle(h.GetProfile, ctx.Logger))
+		profiles.POST("/:id/start", response.Handle(h.StartProfile, ctx.Logger))
+		profiles.POST("/:id/stop", response.Handle(h.StopProfile, ctx.Logger))
 	}
 
 	ctx.Logger.Info("browser module registered")

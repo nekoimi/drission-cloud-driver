@@ -2,7 +2,6 @@ package driver
 
 import (
 	"fmt"
-	"net/http"
 	"path"
 	"strings"
 	"sync"
@@ -14,7 +13,6 @@ import (
 	"github.com/nekoimi/drission-cloud-driver/internal/drivers"
 	"github.com/nekoimi/drission-cloud-driver/internal/offline"
 	"github.com/nekoimi/drission-cloud-driver/internal/pkg/errcode"
-	"github.com/nekoimi/drission-cloud-driver/internal/pkg/response"
 )
 
 // systemHandler handles system-related endpoints.
@@ -30,11 +28,9 @@ func newSystemHandler(registry *drivers.Registry, logger *zap.Logger) *systemHan
 	}
 }
 
-func (h *systemHandler) ListDrivers(c *gin.Context) {
+func (h *systemHandler) ListDrivers(c *gin.Context) (any, error) {
 	platforms := h.registry.ListPlatforms()
-	response.Success(c, gin.H{
-		"drivers": platforms,
-	})
+	return gin.H{"drivers": platforms}, nil
 }
 
 // driverHandler handles driver API endpoints.
@@ -73,36 +69,33 @@ func (h *driverHandler) getDriver(c *gin.Context) (drivers.Driver, string, error
 	return driver, profileID, nil
 }
 
-func (h *driverHandler) GetCapabilities(c *gin.Context) {
+func (h *driverHandler) GetCapabilities(c *gin.Context) (any, error) {
 	platform := c.Param("platform")
 	driver, err := h.registry.Get(platform, h.browserMgr)
 	if err != nil {
-		notFound(c, errcode.ErrDriverNotFound, err)
-		return
+		return nil, errcode.Wrap(errcode.ErrDriverNotFound, err)
 	}
 
 	capabilities := driver.Capabilities()
-	response.Success(c, gin.H{
+	return gin.H{
 		"platform":         platform,
 		"offline_download": capabilities.OfflineDownload,
 		"fs_list":          capabilities.FileManage,
 		"fs_search":        capabilities.Search,
 		"media_url":        capabilities.DirectLink,
 		"capabilities":     capabilities,
-	})
+	}, nil
 }
 
-func (h *driverHandler) AddOfflineTask(c *gin.Context) {
+func (h *driverHandler) AddOfflineTask(c *gin.Context) (any, error) {
 	driver, profileID, err := h.getDriver(c)
 	if err != nil {
-		appError(c, err)
-		return
+		return nil, err
 	}
 
 	var req drivers.AddTaskRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		validationError(c, err)
-		return
+		return nil, errcode.NewWithDetail(errcode.Validation, err.Error())
 	}
 	req.ClientTaskID = strings.TrimSpace(req.ClientTaskID)
 
@@ -112,27 +105,23 @@ func (h *driverHandler) AddOfflineTask(c *gin.Context) {
 
 		if record, ok := h.offlineStore.GetByClientTask(driver.Platform(), profileID, req.ClientTaskID); ok {
 			task := h.refreshOfflineTask(c, driver, profileID, record)
-			response.Success(c, task)
-			return
+			return task, nil
 		}
 	}
 
 	task, err := driver.AddOfflineTask(c.Request.Context(), profileID, &req)
 	if err != nil {
-		h.logger.Error("add offline task failed", zap.Error(err))
-		operationFailed(c, err)
-		return
+		return nil, errcode.Wrap(errcode.ErrOperationFailed, err)
 	}
 
 	h.putOfflineTask(driver.Platform(), profileID, req, *task)
-	response.Success(c, task)
+	return task, nil
 }
 
-func (h *driverHandler) GetOfflineTask(c *gin.Context) {
+func (h *driverHandler) GetOfflineTask(c *gin.Context) (any, error) {
 	driver, profileID, err := h.getDriver(c)
 	if err != nil {
-		appError(c, err)
-		return
+		return nil, err
 	}
 
 	taskID := c.Param("id")
@@ -143,55 +132,43 @@ func (h *driverHandler) GetOfflineTask(c *gin.Context) {
 				zap.String("task_id", taskID),
 				zap.Error(err),
 			)
-			response.Success(c, &stored)
-			return
+			return &stored, nil
 		}
-		h.logger.Error("query offline task failed", zap.Error(err))
-		operationFailed(c, err)
-		return
+		return nil, errcode.Wrap(errcode.ErrTaskNotFound, err)
 	}
 
 	h.updateStoredOfflineTask(driver.Platform(), profileID, task)
-	response.Success(c, task)
+	return task, nil
 }
 
-func (h *driverHandler) RemoveOfflineTask(c *gin.Context) {
+func (h *driverHandler) RemoveOfflineTask(c *gin.Context) (any, error) {
 	driver, profileID, err := h.getDriver(c)
 	if err != nil {
-		appError(c, err)
-		return
+		return nil, err
 	}
 
 	taskID := c.Param("id")
 	if err := driver.RemoveOfflineTask(c.Request.Context(), profileID, taskID); err != nil {
-		h.logger.Error("remove offline task failed", zap.Error(err))
-		operationFailed(c, err)
-		return
+		return nil, errcode.Wrap(errcode.ErrOperationFailed, err)
 	}
 
 	h.markStoredOfflineTaskCanceled(driver.Platform(), profileID, taskID)
-	response.Success(c, gin.H{
-		"task_id": taskID,
-		"deleted": true,
-	})
+	return gin.H{"task_id": taskID, "deleted": true}, nil
 }
 
-func (h *driverHandler) ListOfflineTasks(c *gin.Context) {
+func (h *driverHandler) ListOfflineTasks(c *gin.Context) (any, error) {
 	driver, profileID, err := h.getDriver(c)
 	if err != nil {
-		appError(c, err)
-		return
+		return nil, err
 	}
 
 	taskList, err := driver.ListOfflineTasks(c.Request.Context(), profileID)
 	if err != nil {
-		h.logger.Error("list offline tasks failed", zap.Error(err))
-		operationFailed(c, err)
-		return
+		return nil, errcode.Wrap(errcode.ErrOperationFailed, err)
 	}
 
 	h.updateStoredOfflineTasks(driver.Platform(), profileID, taskList.Items)
-	response.Success(c, taskList)
+	return taskList, nil
 }
 
 func (h *driverHandler) refreshOfflineTask(c *gin.Context, driver drivers.Driver, profileID string, record offline.OfflineTaskRecord) *drivers.OfflineTask {
@@ -340,11 +317,10 @@ func (h *driverHandler) markStoredOfflineTaskCanceled(platform, profileID, taskI
 	}
 }
 
-func (h *driverHandler) Mkdir(c *gin.Context) {
+func (h *driverHandler) Mkdir(c *gin.Context) (any, error) {
 	driver, profileID, err := h.getDriver(c)
 	if err != nil {
-		appError(c, err)
-		return
+		return nil, err
 	}
 
 	var req struct {
@@ -353,54 +329,45 @@ func (h *driverHandler) Mkdir(c *gin.Context) {
 		Name       string `json:"name"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		validationError(c, err)
-		return
+		return nil, errcode.NewWithDetail(errcode.Validation, err.Error())
 	}
 
 	parentPath, name, err := parseMkdirRequest(req.Path, req.ParentPath, req.Name)
 	if err != nil {
-		badRequest(c, err.Error())
-		return
+		return nil, errcode.NewWithDetail(errcode.BadRequest, err.Error())
 	}
 
 	if err := driver.Mkdir(c.Request.Context(), profileID, parentPath, name); err != nil {
-		h.logger.Error("mkdir failed", zap.Error(err))
-		operationFailed(c, err)
-		return
+		return nil, errcode.Wrap(errcode.ErrOperationFailed, err)
 	}
 
-	response.Success(c, gin.H{"status": "created"})
+	return gin.H{"status": "created"}, nil
 }
 
-func (h *driverHandler) Remove(c *gin.Context) {
+func (h *driverHandler) Remove(c *gin.Context) (any, error) {
 	driver, profileID, err := h.getDriver(c)
 	if err != nil {
-		appError(c, err)
-		return
+		return nil, err
 	}
 
 	var req struct {
 		Path string `json:"path" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		validationError(c, err)
-		return
+		return nil, errcode.NewWithDetail(errcode.Validation, err.Error())
 	}
 
 	if err := driver.Remove(c.Request.Context(), profileID, req.Path); err != nil {
-		h.logger.Error("remove failed", zap.Error(err))
-		operationFailed(c, err)
-		return
+		return nil, errcode.Wrap(errcode.ErrOperationFailed, err)
 	}
 
-	response.Success(c, gin.H{"status": "removed"})
+	return gin.H{"status": "removed"}, nil
 }
 
-func (h *driverHandler) Move(c *gin.Context) {
+func (h *driverHandler) Move(c *gin.Context) (any, error) {
 	driver, profileID, err := h.getDriver(c)
 	if err != nil {
-		appError(c, err)
-		return
+		return nil, err
 	}
 
 	var req struct {
@@ -408,24 +375,20 @@ func (h *driverHandler) Move(c *gin.Context) {
 		Dst string `json:"dst" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		validationError(c, err)
-		return
+		return nil, errcode.NewWithDetail(errcode.Validation, err.Error())
 	}
 
 	if err := driver.Move(c.Request.Context(), profileID, req.Src, req.Dst); err != nil {
-		h.logger.Error("move failed", zap.Error(err))
-		operationFailed(c, err)
-		return
+		return nil, errcode.Wrap(errcode.ErrOperationFailed, err)
 	}
 
-	response.Success(c, gin.H{"status": "moved"})
+	return gin.H{"status": "moved"}, nil
 }
 
-func (h *driverHandler) Rename(c *gin.Context) {
+func (h *driverHandler) Rename(c *gin.Context) (any, error) {
 	driver, profileID, err := h.getDriver(c)
 	if err != nil {
-		appError(c, err)
-		return
+		return nil, err
 	}
 
 	var req struct {
@@ -433,101 +396,84 @@ func (h *driverHandler) Rename(c *gin.Context) {
 		NewName string `json:"new_name" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		validationError(c, err)
-		return
+		return nil, errcode.NewWithDetail(errcode.Validation, err.Error())
 	}
 
 	if err := driver.Rename(c.Request.Context(), profileID, req.Path, req.NewName); err != nil {
-		h.logger.Error("rename failed", zap.Error(err))
-		operationFailed(c, err)
-		return
+		return nil, errcode.Wrap(errcode.ErrOperationFailed, err)
 	}
 
-	response.Success(c, gin.H{"status": "renamed"})
+	return gin.H{"status": "renamed"}, nil
 }
 
-func (h *driverHandler) List(c *gin.Context) {
+func (h *driverHandler) List(c *gin.Context) (any, error) {
 	driver, profileID, err := h.getDriver(c)
 	if err != nil {
-		appError(c, err)
-		return
+		return nil, err
 	}
 
 	dirPath := c.Query("path")
 	files, err := driver.List(c.Request.Context(), profileID, dirPath)
 	if err != nil {
-		h.logger.Error("list failed", zap.Error(err))
-		operationFailed(c, err)
-		return
+		return nil, errcode.Wrap(errcode.ErrOperationFailed, err)
 	}
 
-	response.Success(c, gin.H{"files": files})
+	return gin.H{"files": files}, nil
 }
 
-func (h *driverHandler) Search(c *gin.Context) {
+func (h *driverHandler) Search(c *gin.Context) (any, error) {
 	driver, profileID, err := h.getDriver(c)
 	if err != nil {
-		appError(c, err)
-		return
+		return nil, err
 	}
 
 	keyword := c.Query("keyword")
 	if keyword == "" {
-		badRequest(c, "keyword is required")
-		return
+		return nil, errcode.NewWithDetail(errcode.BadRequest, "keyword is required")
 	}
 
 	files, err := driver.Search(c.Request.Context(), profileID, keyword)
 	if err != nil {
-		h.logger.Error("search failed", zap.Error(err))
-		operationFailed(c, err)
-		return
+		return nil, errcode.Wrap(errcode.ErrOperationFailed, err)
 	}
 
-	response.Success(c, gin.H{"files": files})
+	return gin.H{"files": files}, nil
 }
 
-func (h *driverHandler) DirName2CID(c *gin.Context) {
+func (h *driverHandler) DirName2CID(c *gin.Context) (any, error) {
 	driver, profileID, err := h.getDriver(c)
 	if err != nil {
-		appError(c, err)
-		return
+		return nil, err
 	}
 
 	tester, ok := driver.(drivers.DirName2CIDTester)
 	if !ok {
-		badRequest(c, "dirname2cid is not supported by this driver")
-		return
+		return nil, errcode.NewWithDetail(errcode.BadRequest, "dirname2cid is not supported by this driver")
 	}
 
 	remotePath := strings.TrimSpace(c.Query("path"))
 	if remotePath == "" {
-		badRequest(c, "path is required")
-		return
+		return nil, errcode.NewWithDetail(errcode.BadRequest, "path is required")
 	}
 
 	result, err := tester.DirName2CID(c.Request.Context(), profileID, remotePath)
 	if err != nil {
-		h.logger.Error("dirname2cid failed", zap.Error(err))
-		operationFailed(c, err)
-		return
+		return nil, errcode.Wrap(errcode.ErrOperationFailed, err)
 	}
 
-	response.Success(c, result)
+	return result, nil
 }
 
-func (h *driverHandler) GetDownloadURL(c *gin.Context) {
+func (h *driverHandler) GetDownloadURL(c *gin.Context) (any, error) {
 	driver, profileID, err := h.getDriver(c)
 	if err != nil {
-		appError(c, err)
-		return
+		return nil, err
 	}
 
 	fileID := strings.TrimSpace(c.Query("file_id"))
 	filePath := strings.TrimSpace(c.Query("path"))
 	if fileID == "" && filePath == "" {
-		badRequest(c, "file_id or path is required")
-		return
+		return nil, errcode.NewWithDetail(errcode.BadRequest, "file_id or path is required")
 	}
 
 	var url string
@@ -537,12 +483,10 @@ func (h *driverHandler) GetDownloadURL(c *gin.Context) {
 		url, err = driver.GetDownloadURL(c.Request.Context(), profileID, filePath)
 	}
 	if err != nil {
-		h.logger.Error("get download URL failed", zap.Error(err))
-		operationFailed(c, err)
-		return
+		return nil, errcode.Wrap(errcode.ErrOperationFailed, err)
 	}
 
-	response.Success(c, gin.H{"url": url})
+	return gin.H{"url": url}, nil
 }
 
 func parseMkdirRequest(requestPath, parentPath, name string) (string, string, error) {
@@ -567,34 +511,4 @@ func parseMkdirRequest(requestPath, parentPath, name string) (string, string, er
 	}
 
 	return parentPath, name, nil
-}
-
-func badRequest(c *gin.Context, msg string) {
-	response.ErrorWithMsg(c, http.StatusBadRequest, errcode.ErrInvalidRequest, msg)
-}
-
-func validationError(c *gin.Context, err error) {
-	response.ValidationError(c, err.Error())
-}
-
-func notFound(c *gin.Context, code *errcode.Code, err error) {
-	response.ErrorWithMsg(c, http.StatusNotFound, code, err.Error())
-}
-
-func operationFailed(c *gin.Context, err error) {
-	if appErr, ok := response.IsAppError(err); ok {
-		response.AppErr(c, appErr)
-		return
-	}
-
-	response.ErrorWithMsg(c, http.StatusInternalServerError, errcode.ErrOperationFailed, err.Error())
-}
-
-func appError(c *gin.Context, err error) {
-	if appErr, ok := response.IsAppError(err); ok {
-		response.AppErr(c, appErr)
-		return
-	}
-
-	operationFailed(c, err)
 }
