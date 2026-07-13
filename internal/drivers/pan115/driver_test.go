@@ -1,6 +1,8 @@
 package pan115
 
 import (
+	"fmt"
+	"path/filepath"
 	"testing"
 
 	pan115driver "github.com/SheltonZhu/115driver/pkg/driver"
@@ -51,6 +53,56 @@ func TestToOfflineTaskBuildsUnifiedTaskID(t *testing.T) {
 	}
 	if got.Progress != 0.42 {
 		t.Fatalf("Progress = %v, want 0.42", got.Progress)
+	}
+}
+
+func TestIsTargetAlreadyExists(t *testing.T) {
+	if !isTargetAlreadyExists(fmt.Errorf("create dir path: %w", pan115driver.ErrExist)) {
+		t.Fatalf("isTargetAlreadyExists() = false, want true")
+	}
+	if isTargetAlreadyExists(fmt.Errorf("create dir path: %w", pan115driver.ErrNotExist)) {
+		t.Fatalf("isTargetAlreadyExists() = true, want false")
+	}
+}
+
+func TestDirIDCacheIsProfileScoped(t *testing.T) {
+	d := &Driver{}
+	d.setCachedDirID("profile-a", "/JavMediaLibrary/JavDB", "cid-a")
+	d.setCachedDirID("profile-b", "JavMediaLibrary/JavDB/", "cid-b")
+
+	if got, ok := d.getCachedDirID("profile-a", "JavMediaLibrary/JavDB"); !ok || got != "cid-a" {
+		t.Fatalf("profile-a cached dir = %q, %v; want cid-a, true", got, ok)
+	}
+	if got, ok := d.getCachedDirID("profile-b", "/JavMediaLibrary/JavDB"); !ok || got != "cid-b" {
+		t.Fatalf("profile-b cached dir = %q, %v; want cid-b, true", got, ok)
+	}
+}
+
+func TestDirIDCachePersistsToSQLite(t *testing.T) {
+	dsn := filepath.Join(t.TempDir(), "cache.db")
+
+	first := &Driver{}
+	if err := first.openDirIDCache(dsn); err != nil {
+		t.Fatalf("open first cache: %v", err)
+	}
+	first.setCachedDirID("profile-a", "/JavMediaLibrary/JavDB", "cid-a")
+	if err := first.Close(); err != nil {
+		t.Fatalf("close first cache: %v", err)
+	}
+
+	second := &Driver{}
+	if err := second.openDirIDCache(dsn); err != nil {
+		t.Fatalf("open second cache: %v", err)
+	}
+	defer func() {
+		if err := second.Close(); err != nil {
+			t.Fatalf("close second cache: %v", err)
+		}
+	}()
+
+	got, ok := second.getCachedDirID("profile-a", "JavMediaLibrary/JavDB")
+	if !ok || got != "cid-a" {
+		t.Fatalf("cached dir after reopen = %q, %v; want cid-a, true", got, ok)
 	}
 }
 

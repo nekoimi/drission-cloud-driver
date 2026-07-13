@@ -1,7 +1,9 @@
 package app
 
 import (
+	"context"
 	"fmt"
+	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -12,9 +14,10 @@ import (
 	"github.com/nekoimi/drission-cloud-driver/internal/config"
 	"github.com/nekoimi/drission-cloud-driver/internal/drivers"
 	"github.com/nekoimi/drission-cloud-driver/internal/drivers/pan115"
+	"github.com/nekoimi/drission-cloud-driver/internal/framework"
 	"github.com/nekoimi/drission-cloud-driver/internal/handler"
-	"github.com/nekoimi/drission-cloud-driver/internal/infrastructure/logger"
 	"github.com/nekoimi/drission-cloud-driver/internal/offline"
+	"github.com/nekoimi/drission-cloud-driver/internal/pkg/logger"
 	"github.com/nekoimi/drission-cloud-driver/internal/pkg/timeutil"
 )
 
@@ -23,11 +26,33 @@ type App struct {
 	Config         *config.Config
 	Logger         *zap.Logger
 	BrowserManager *browser.Manager
-	Registry       *drivers.Registry
+	DriverRegistry *drivers.Registry
 	OfflineStore   offline.Store
+	HTTPServer     *http.Server
+	httpErr        chan error
+	Modules        []framework.Module
+	ModuleCtx      *framework.ModuleContext
+}
+
+func (a *App) Boot(ctx context.Context) error {
+	if a == nil {
+		return nil
+	}
+	return framework.BootModules(ctx, a.ModuleCtx, a.Modules...)
+}
+
+func (a *App) Shutdown(ctx context.Context) error {
+	if a == nil {
+		return nil
+	}
+	return framework.ShutdownModules(ctx, a.ModuleCtx, a.Modules...)
 }
 
 func Initialize(configPath string) (*App, func(), error) {
+	return initialize(configPath, registeredModules())
+}
+
+func initialize(configPath string, modules []framework.Module) (*App, func(), error) {
 	// 1. Load config
 	cfg, err := config.Load(configPath)
 	if err != nil {
@@ -58,7 +83,7 @@ func Initialize(configPath string) (*App, func(), error) {
 	for _, platform := range cfg.Drivers.Platforms {
 		switch platform {
 		case "115":
-			registry.Register("115", pan115.NewFactory())
+			registry.Register("115", pan115.NewFactoryWithDirIDCacheDSN(cfg.Offline.Store.DSN))
 			// Add more platforms here
 			// case "pikpak":
 			//     registry.Register("pikpak", pikpak.NewFactory())
@@ -71,16 +96,28 @@ func Initialize(configPath string) (*App, func(), error) {
 		return nil, nil, fmt.Errorf("failed to create offline store: %w", err)
 	}
 
-	// 8. Setup router
-	router := handler.SetupRouter(cfg, log, browserMgr, registry, offlineStore)
+	// 8. Health checks
+	health := framework.NewHealthRegistry()
+	events := framework.NewEventBus()
+
+	// 9. Setup base router
+	router := handler.SetupRouter(cfg, log, health)
+
+	// 10. Register feature modules
+	moduleCtx := framework.NewModuleContext(cfg, log, router, browserMgr, registry, offlineStore, health, events)
+	if err := framework.RegisterModules(moduleCtx, modules...); err != nil {
+		return nil, nil, err
+	}
 
 	app := &App{
-		Engine:         router,
+		Engine:         router.Engine,
 		Config:         cfg,
 		Logger:         log,
 		BrowserManager: browserMgr,
-		Registry:       registry,
+		DriverRegistry: registry,
 		OfflineStore:   offlineStore,
+		Modules:        modules,
+		ModuleCtx:      moduleCtx,
 	}
 
 	cleanup := func() {
@@ -89,9 +126,6 @@ func Initialize(configPath string) (*App, func(), error) {
 			if err := closer.Close(); err != nil {
 				log.Warn("failed to close offline store", zap.Error(err))
 			}
-		}
-		if err := browserMgr.Shutdown(); err != nil {
-			log.Warn("failed to shutdown browser manager", zap.Error(err))
 		}
 		_ = log.Sync()
 	}

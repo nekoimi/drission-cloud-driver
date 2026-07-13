@@ -1,0 +1,61 @@
+name: drission-cloud-driver
+
+services:
+  drission-cloud-driver:
+    image: drission-cloud-driver:latest
+    container_name: drission-cloud-driver
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["--config", "/app/config/config.prod.yaml"]
+    restart: unless-stopped
+    init: true
+
+    ports:
+      # Production deployments should normally expose the service through Nginx,
+      # Caddy, Traefik, or another reverse proxy on the same host.
+      - "127.0.0.1:8091:8091"
+
+    environment:
+      TZ: Asia/Shanghai
+      CLOAK_BASE_URL: http://cloak-browser-manager:3000
+      CLOAK_API_KEY: ""
+
+    volumes:
+      # Mount production config read-only so it can be changed without rebuilding
+      # the image. Keep config.prod.yaml in this directory up to date.
+      - type: bind
+        source: ./config
+        target: /app/config
+        read_only: true
+      # Persist SQLite offline task state across container recreations.
+      - type: volume
+        source: drission_data
+        target: /app/data
+
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8091/health >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+    stop_grace_period: 20s
+
+    logging:
+      driver: json-file
+      options:
+        max-size: 20m
+        max-file: "5"
+
+    networks:
+      - drission
+
+volumes:
+  drission_data:
+    name: drission-cloud-driver-data
+
+networks:
+  drission:
+    name: drission-cloud-driver
+    driver: bridge

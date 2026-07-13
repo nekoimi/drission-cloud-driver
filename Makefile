@@ -1,8 +1,10 @@
-.PHONY: run build test lint docker-build docker-up docker-down clean
+.PHONY: run run-server build test lint docker-build docker-up docker-down dev-up dev-down clean
 
 # Run the server
-run:
-	go run cmd/server/main.go --config configs/config.dev.yaml
+run: run-server
+
+run-server:
+	go run cmd/server/main.go --config config/config.dev.yaml
 
 # Build
 build:
@@ -12,19 +14,26 @@ build:
 test:
 	go test ./...
 
-# Lint (requires golangci-lint in PATH)
+# Lint (requires golangci-lint in PATH: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest)
 lint:
 	golangci-lint run ./...
 
 # Docker
 docker-build:
-	docker compose -f deployments/docker-compose.yml build
+	docker compose build
 
 docker-up:
-	docker compose -f deployments/docker-compose.yml up -d
+	docker compose up -d
 
 docker-down:
-	docker compose -f deployments/docker-compose.yml down
+	docker compose down
+
+# Dev environment
+dev-up:
+	docker compose up -d
+
+dev-down:
+	docker compose down
 
 # Clean
 clean:

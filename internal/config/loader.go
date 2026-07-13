@@ -37,7 +37,7 @@ func Load(configPath string) (*Config, error) {
 func DefaultConfig() *Config {
 	return &Config{
 		Server: ServerConfig{
-			Port:            "8080",
+			Port:            "8091",
 			Mode:            "debug",
 			Timezone:        "Asia/Shanghai",
 			ShutdownTimeout: 10,
@@ -59,6 +59,10 @@ func DefaultConfig() *Config {
 			Enabled: false,
 			RPS:     100,
 			Burst:   200,
+		},
+		Modules: ModulesConfig{
+			"browser": {Enabled: true},
+			"driver":  {Enabled: true},
 		},
 	}
 }

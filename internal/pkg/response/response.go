@@ -6,7 +6,32 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/nekoimi/drission-cloud-driver/internal/pkg/errcode"
+	"go.uber.org/zap"
 )
+
+// HandlerFunc 定义简化的 handler 函数类型
+type HandlerFunc func(c *gin.Context) (any, error)
+
+// Handle 包装简化的 handler，统一处理成功/错误响应
+func Handle(fn HandlerFunc, logger *zap.Logger) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		data, err := fn(c)
+		if err != nil {
+			if appErr, ok := IsAppError(err); ok {
+				AppErr(c, appErr)
+				return
+			}
+			logger.Error("handler error",
+				zap.String("method", c.Request.Method),
+				zap.String("path", c.Request.URL.Path),
+				zap.Error(err),
+			)
+			ErrorWithMsg(c, http.StatusInternalServerError, errcode.Internal, "internal error")
+			return
+		}
+		Ok(c, data)
+	}
+}
 
 type APIResponse struct {
 	Code    int         `json:"code"`
@@ -15,12 +40,17 @@ type APIResponse struct {
 	Error   interface{} `json:"error,omitempty"`
 }
 
-func Success(c *gin.Context, data interface{}) {
+func Ok(c *gin.Context, data any) {
 	c.JSON(http.StatusOK, APIResponse{
 		Code:    errcode.OK.Value,
 		Message: errcode.OK.Message,
 		Data:    data,
 	})
+}
+
+// Success 保留向后兼容
+func Success(c *gin.Context, data any) {
+	Ok(c, data)
 }
 
 func Error(c *gin.Context, httpStatus int, code *errcode.Code) {

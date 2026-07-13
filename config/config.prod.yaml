@@ -1,5 +1,5 @@
 server:
-  port: "8080"
+  port: "8091"
   mode: release
   timezone: "Asia/Shanghai"
   shutdown_timeout: 10
@@ -24,3 +24,9 @@ rate_limit:
   enabled: true
   rps: 100
   burst: 200
+
+modules:
+  browser:
+    enabled: true
+  driver:
+    enabled: true

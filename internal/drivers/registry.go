@@ -61,3 +61,17 @@ func (r *Registry) ListPlatforms() []string {
 	}
 	return platforms
 }
+
+// Close releases resources held by instantiated drivers.
+func (r *Registry) Close() error {
+	for platform, driver := range r.drivers {
+		closer, ok := driver.(interface{ Close() error })
+		if !ok {
+			continue
+		}
+		if err := closer.Close(); err != nil {
+			return fmt.Errorf("close driver %s: %w", platform, err)
+		}
+	}
+	return nil
+}

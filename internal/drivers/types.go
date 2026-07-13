@@ -1,10 +1,14 @@
 package drivers
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 // FileInfo represents a file or directory in cloud storage.
 type FileInfo struct {
 	ID        string         `json:"id"`
+	FileID    string         `json:"file_id,omitempty"`
 	Name      string         `json:"name"`
 	Path      string         `json:"path"`
 	IsDir     bool           `json:"is_dir"`
@@ -46,9 +50,18 @@ type OfflineTask struct {
 	SavePath       string     `json:"save_path,omitempty"`
 	ErrorCode      string     `json:"error_code,omitempty"`
 	ErrorMessage   string     `json:"error_message,omitempty"`
-	Files          []FileInfo `json:"files,omitempty"`
+	Files          []FileInfo `json:"files"`
+	Warnings       []string   `json:"warnings,omitempty"`
 	CreatedAt      time.Time  `json:"created_at,omitempty"`
 	UpdatedAt      time.Time  `json:"updated_at,omitempty"`
+}
+
+func (t OfflineTask) MarshalJSON() ([]byte, error) {
+	type alias OfflineTask
+	if t.Files == nil {
+		t.Files = []FileInfo{}
+	}
+	return json.Marshal(alias(t))
 }
 
 // OfflineTaskList represents a paged list of offline download tasks.
@@ -64,4 +77,13 @@ type DriverCapabilities struct {
 	Search          bool `json:"search"`
 	DirectLink      bool `json:"direct_link"`
 	MediaInfo       bool `json:"media_info"`
+}
+
+// DirName2CIDResult is the raw-ish result returned by a provider path-to-dir-id
+// lookup endpoint.
+type DirName2CIDResult struct {
+	Path       string `json:"path"`
+	Cleaned    string `json:"cleaned"`
+	CategoryID string `json:"category_id"`
+	IsPrivate  string `json:"is_private,omitempty"`
 }

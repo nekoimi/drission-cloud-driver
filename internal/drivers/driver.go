@@ -28,3 +28,9 @@ type Driver interface {
 	GetDownloadURL(ctx context.Context, profileID string, path string) (string, error)
 	GetDownloadURLByID(ctx context.Context, profileID string, fileID string) (string, error)
 }
+
+// DirName2CIDTester is an optional debug interface for drivers that expose a
+// provider-specific path-to-directory-id API.
+type DirName2CIDTester interface {
+	DirName2CID(ctx context.Context, profileID string, remotePath string) (*DirName2CIDResult, error)
+}

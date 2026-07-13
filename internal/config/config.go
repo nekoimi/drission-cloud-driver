@@ -6,6 +6,27 @@ type Config struct {
 	Drivers   DriversConfig   `mapstructure:"drivers"`
 	Offline   OfflineConfig   `mapstructure:"offline"`
 	RateLimit RateLimitConfig `mapstructure:"rate_limit"`
+	Modules   ModulesConfig   `mapstructure:"modules"`
+}
+
+type ModulesConfig map[string]ModuleConfig
+
+type ModuleConfig struct {
+	Enabled bool `mapstructure:"enabled"`
+}
+
+func (c *Config) ModuleEnabled(name string) bool {
+	if c == nil {
+		return false
+	}
+	if c.Modules == nil {
+		return true
+	}
+	module, ok := c.Modules[name]
+	if !ok {
+		return true
+	}
+	return module.Enabled
 }
 
 type ServerConfig struct {

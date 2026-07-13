@@ -4,15 +4,12 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"github.com/nekoimi/drission-cloud-driver/internal/browser"
 	"github.com/nekoimi/drission-cloud-driver/internal/config"
-	"github.com/nekoimi/drission-cloud-driver/internal/drivers"
-	"github.com/nekoimi/drission-cloud-driver/internal/handler/middleware"
-	v1 "github.com/nekoimi/drission-cloud-driver/internal/handler/v1"
-	"github.com/nekoimi/drission-cloud-driver/internal/offline"
+	"github.com/nekoimi/drission-cloud-driver/internal/framework"
+	"github.com/nekoimi/drission-cloud-driver/internal/middleware"
 )
 
-func SetupRouter(cfg *config.Config, logger *zap.Logger, browserMgr *browser.Manager, registry *drivers.Registry, offlineStore offline.Store) *gin.Engine {
+func SetupRouter(cfg *config.Config, logger *zap.Logger, health *framework.HealthRegistry) *framework.RouterContext {
 	gin.SetMode(cfg.Server.Mode)
 	r := gin.New()
 
@@ -27,59 +24,23 @@ func SetupRouter(cfg *config.Config, logger *zap.Logger, browserMgr *browser.Man
 		r.Use(middleware.RateLimit(cfg.RateLimit.RPS, cfg.RateLimit.Burst))
 	}
 
-	// Handlers
-	systemHandler := v1.NewSystemHandler(registry, logger)
-	profileHandler := v1.NewProfileHandler(browserMgr, logger)
-	driverHandler := v1.NewDriverHandler(registry, browserMgr, offlineStore, logger)
+	// Health check (liveness)
+	r.GET("/health", func(c *gin.Context) {
+		c.JSON(200, gin.H{"status": "ok"})
+	})
 
-	// Health check
-	r.GET("/health", systemHandler.Health)
-
-	// Profile management
-	profiles := r.Group("/profiles")
-	{
-		profiles.GET("", profileHandler.ListProfiles)
-		profiles.GET("/:id", profileHandler.GetProfile)
-		profiles.POST("/:id/start", profileHandler.StartProfile)
-		profiles.POST("/:id/stop", profileHandler.StopProfile)
-	}
-
-	// Driver API
-	api := r.Group("/drivers")
-	{
-		api.GET("", systemHandler.ListDrivers)
-
-		d := api.Group("/:platform")
-		{
-			d.GET("/capabilities", driverHandler.GetCapabilities)
-
-			// Offline download
-			offlineApi := d.Group("/offline")
-			{
-				offlineApi.POST("/add", driverHandler.AddOfflineTask)
-				offlineApi.GET("/tasks", driverHandler.ListOfflineTasks)
-				offlineApi.GET("/tasks/:id", driverHandler.GetOfflineTask)
-				offlineApi.DELETE("/tasks/:id", driverHandler.RemoveOfflineTask)
-			}
-
-			// File system
-			fs := d.Group("/fs")
-			{
-				fs.POST("/mkdir", driverHandler.Mkdir)
-				fs.DELETE("/remove", driverHandler.Remove)
-				fs.POST("/move", driverHandler.Move)
-				fs.POST("/rename", driverHandler.Rename)
-				fs.GET("/list", driverHandler.List)
-				fs.GET("/search", driverHandler.Search)
-			}
-
-			// Media
-			media := d.Group("/media")
-			{
-				media.GET("/url", driverHandler.GetDownloadURL)
-			}
+	// Readiness check
+	r.GET("/ready", func(c *gin.Context) {
+		result := health.Check(c.Request.Context())
+		if result.Status != "ready" {
+			c.JSON(503, result)
+			return
 		}
-	}
+		c.JSON(200, result)
+	})
 
-	return r
+	return &framework.RouterContext{
+		Engine: r,
+		API:    r.Group(""),
+	}
 }
