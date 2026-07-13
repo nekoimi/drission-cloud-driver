@@ -16,8 +16,8 @@ drivers:
 
 offline:
   store:
-    driver: "sqlite"
-    dsn: "./data/offline_tasks.dev.db"
+    driver: "postgres"
+    dsn: "postgres://drission:drission@localhost:5432/drission_cloud_driver?sslmode=disable"
 
 rate_limit:
   enabled: false

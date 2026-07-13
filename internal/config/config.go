@@ -52,7 +52,7 @@ type OfflineConfig struct {
 }
 
 type OfflineStoreConfig struct {
-	Driver string `mapstructure:"driver"` // memory / sqlite
+	Driver string `mapstructure:"driver"` // memory / postgres / sqlite
 	DSN    string `mapstructure:"dsn"`
 }
 

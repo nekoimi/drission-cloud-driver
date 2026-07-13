@@ -17,8 +17,8 @@ drivers:
 
 offline:
   store:
-    driver: "sqlite"
-    dsn: "./data/offline_tasks.db"
+    driver: "postgres"
+    dsn: ${OFFLINE_STORE_DSN}
 
 rate_limit:
   enabled: true

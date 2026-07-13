@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/SheltonZhu/115driver/pkg/driver"
+	_ "github.com/lib/pq"
 	"go.uber.org/zap"
 	_ "modernc.org/sqlite"
 
@@ -29,10 +30,11 @@ const dirIDCacheTimeFormat = time.RFC3339Nano
 // Driver implements the drivers.Driver interface for 115 cloud storage.
 type Driver struct {
 	base.Base
-	clients      map[string]*driver.Pan115Client // profileID -> client
-	dirIDCache   map[string]string               // profileID + path -> dirID
-	dirIDCacheDB *sql.DB
-	mu           sync.RWMutex
+	clients            map[string]*driver.Pan115Client // profileID -> client
+	dirIDCache         map[string]string               // profileID + path -> dirID
+	dirIDCacheDB       *sql.DB
+	dirIDCacheDBDriver string
+	mu                 sync.RWMutex
 }
 
 // NewFactory creates a new 115 driver factory.
@@ -41,7 +43,7 @@ func NewFactory() drivers.Factory {
 }
 
 // NewFactoryWithDirIDCacheDSN creates a 115 driver factory with a persistent
-// SQLite directory-id cache.
+// directory-id cache.
 func NewFactoryWithDirIDCacheDSN(cacheDSN string) drivers.Factory {
 	return func(browserMgr *browser.Manager, logger *zap.Logger) (drivers.Driver, error) {
 		d := &Driver{
@@ -479,23 +481,35 @@ func (d *Driver) openDirIDCache(dsn string) error {
 	if dsn == "" {
 		return nil
 	}
-	if err := ensureDirIDCacheSQLiteDir(dsn); err != nil {
-		return err
+
+	driverName := dirIDCacheDriverName(dsn)
+	if driverName == "sqlite" {
+		if err := ensureDirIDCacheSQLiteDir(dsn); err != nil {
+			return err
+		}
 	}
 
-	db, err := sql.Open("sqlite", dsn)
+	db, err := sql.Open(driverName, dsn)
 	if err != nil {
 		return fmt.Errorf("open pan115 dir id cache: %w", err)
 	}
 
-	if _, err := db.Exec(`PRAGMA journal_mode = WAL`); err != nil {
+	if err := db.Ping(); err != nil {
 		_ = db.Close()
-		return fmt.Errorf("set pan115 dir id cache journal mode: %w", err)
+		return fmt.Errorf("ping pan115 dir id cache: %w", err)
 	}
-	if _, err := db.Exec(`PRAGMA busy_timeout = 5000`); err != nil {
-		_ = db.Close()
-		return fmt.Errorf("set pan115 dir id cache busy timeout: %w", err)
+
+	if driverName == "sqlite" {
+		if _, err := db.Exec(`PRAGMA journal_mode = WAL`); err != nil {
+			_ = db.Close()
+			return fmt.Errorf("set pan115 dir id cache journal mode: %w", err)
+		}
+		if _, err := db.Exec(`PRAGMA busy_timeout = 5000`); err != nil {
+			_ = db.Close()
+			return fmt.Errorf("set pan115 dir id cache busy timeout: %w", err)
+		}
 	}
+
 	if _, err := db.Exec(`
 CREATE TABLE IF NOT EXISTS pan115_dir_id_cache (
     profile_id TEXT NOT NULL,
@@ -511,6 +525,7 @@ CREATE TABLE IF NOT EXISTS pan115_dir_id_cache (
 	}
 
 	d.dirIDCacheDB = db
+	d.dirIDCacheDBDriver = driverName
 	return nil
 }
 
@@ -531,7 +546,7 @@ func (d *Driver) getCachedDirID(profileID string, remotePath string) (string, bo
 	row := d.dirIDCacheDB.QueryRow(`
 SELECT dir_id
 FROM pan115_dir_id_cache
-WHERE profile_id = ? AND path = ?
+WHERE profile_id = `+d.dirIDCachePlaceholder(1)+` AND path = `+d.dirIDCachePlaceholder(2)+`
 `, profileID, cleaned)
 	if err := row.Scan(&dirID); err != nil {
 		return "", false
@@ -554,14 +569,15 @@ func (d *Driver) setCachedDirID(profileID string, remotePath string, dirID strin
 	}
 
 	now := time.Now().Format(dirIDCacheTimeFormat)
-	_, err := d.dirIDCacheDB.Exec(`
+	query := `
 INSERT INTO pan115_dir_id_cache (
     profile_id, path, dir_id, created_at, updated_at
-) VALUES (?, ?, ?, ?, ?)
+) VALUES (` + d.dirIDCachePlaceholder(1) + `, ` + d.dirIDCachePlaceholder(2) + `, ` + d.dirIDCachePlaceholder(3) + `, ` + d.dirIDCachePlaceholder(4) + `, ` + d.dirIDCachePlaceholder(5) + `)
 ON CONFLICT(profile_id, path) DO UPDATE SET
     dir_id = excluded.dir_id,
     updated_at = excluded.updated_at
-`, profileID, cleaned, dirID, now, now)
+`
+	_, err := d.dirIDCacheDB.Exec(query, profileID, cleaned, dirID, now, now)
 	if err != nil && d.Logger != nil {
 		d.Logger.Warn("save pan115 dir id cache failed",
 			zap.String("profile", profileID),
@@ -588,6 +604,23 @@ func (d *Driver) setCachedDirIDMemory(profileID string, remotePath string, dirID
 
 func dirIDCacheKey(profileID string, remotePath string) string {
 	return profileID + "\x00" + cleanRemotePath(remotePath)
+}
+
+func (d *Driver) dirIDCachePlaceholder(n int) string {
+	if d.dirIDCacheDBDriver == "postgres" {
+		return fmt.Sprintf("$%d", n)
+	}
+	return "?"
+}
+
+func dirIDCacheDriverName(dsn string) string {
+	dsn = strings.TrimSpace(dsn)
+	if strings.HasPrefix(dsn, "postgres://") ||
+		strings.HasPrefix(dsn, "postgresql://") ||
+		strings.Contains(dsn, "host=") {
+		return "postgres"
+	}
+	return "sqlite"
 }
 
 func ensureDirIDCacheSQLiteDir(dsn string) error {

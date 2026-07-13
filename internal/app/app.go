@@ -135,7 +135,9 @@ func initialize(configPath string, modules []framework.Module) (*App, func(), er
 
 func newOfflineStore(cfg *config.Config) (offline.Store, error) {
 	switch strings.ToLower(strings.TrimSpace(cfg.Offline.Store.Driver)) {
-	case "", "sqlite":
+	case "", "postgres", "postgresql", "pg":
+		return offline.NewPostgresStore(cfg.Offline.Store.DSN)
+	case "sqlite":
 		return offline.NewSQLiteStore(cfg.Offline.Store.DSN)
 	case "memory":
 		return offline.NewMemoryStore(), nil

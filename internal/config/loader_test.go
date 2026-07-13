@@ -23,8 +23,8 @@ drivers:
     - "115"
 offline:
   store:
-    driver: sqlite
-    dsn: "./test.db"
+    driver: postgres
+    dsn: "postgres://test:test@localhost:5432/test?sslmode=disable"
 rate_limit:
   enabled: true
   rps: 5
@@ -57,8 +57,8 @@ rate_limit:
 	if !cfg.RateLimit.Enabled || cfg.RateLimit.RPS != 5 || cfg.RateLimit.Burst != 10 {
 		t.Fatalf("rate limit = %+v, want config values", cfg.RateLimit)
 	}
-	if cfg.Offline.Store.Driver != "sqlite" || cfg.Offline.Store.DSN != "./test.db" {
-		t.Fatalf("offline store = %+v, want sqlite ./test.db", cfg.Offline.Store)
+	if cfg.Offline.Store.Driver != "postgres" || cfg.Offline.Store.DSN != "postgres://test:test@localhost:5432/test?sslmode=disable" {
+		t.Fatalf("offline store = %+v, want postgres test dsn", cfg.Offline.Store)
 	}
 }
 
@@ -74,8 +74,8 @@ func TestDefaultConfig(t *testing.T) {
 	if len(cfg.Drivers.Platforms) != 1 || cfg.Drivers.Platforms[0] != "115" {
 		t.Fatalf("default platforms = %#v, want [115]", cfg.Drivers.Platforms)
 	}
-	if cfg.Offline.Store.Driver != "sqlite" {
-		t.Fatalf("default offline store driver = %q, want sqlite", cfg.Offline.Store.Driver)
+	if cfg.Offline.Store.Driver != "postgres" {
+		t.Fatalf("default offline store driver = %q, want postgres", cfg.Offline.Store.Driver)
 	}
 	if cfg.Offline.Store.DSN == "" {
 		t.Fatalf("default offline store dsn is empty")

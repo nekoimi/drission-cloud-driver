@@ -20,6 +20,8 @@ services:
       TZ: Asia/Shanghai
       CLOAK_BASE_URL: http://cloak-browser-manager:3000
       CLOAK_API_KEY: ""
+      OFFLINE_STORE_DRIVER: postgres
+      OFFLINE_STORE_DSN: postgres://drission:drission@postgres:5432/drission_cloud_driver?sslmode=disable
 
     volumes:
       # Mount production config read-only so it can be changed without rebuilding
@@ -28,10 +30,6 @@ services:
         source: ./config
         target: /app/config
         read_only: true
-      # Persist SQLite offline task state across container recreations.
-      - type: volume
-        source: drission_data
-        target: /app/data
 
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8091/health >/dev/null || exit 1"]
@@ -51,9 +49,35 @@ services:
     networks:
       - drission
 
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:17-alpine
+    container_name: drission-cloud-driver-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: drission_cloud_driver
+      POSTGRES_USER: drission
+      POSTGRES_PASSWORD: drission
+      TZ: Asia/Shanghai
+    volumes:
+      - type: volume
+        source: postgres_data
+        target: /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U drission -d drission_cloud_driver"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - drission
+
 volumes:
-  drission_data:
-    name: drission-cloud-driver-data
+  postgres_data:
+    name: drission-cloud-driver-postgres-data
 
 networks:
   drission:

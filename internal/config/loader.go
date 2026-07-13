@@ -22,6 +22,10 @@ func Load(configPath string) (*Config, error) {
 	// 服务器环境变量绑定
 	_ = v.BindEnv("server.timezone", "TZ")
 
+	// 离线任务仓库环境变量绑定
+	_ = v.BindEnv("offline.store.driver", "OFFLINE_STORE_DRIVER")
+	_ = v.BindEnv("offline.store.dsn", "OFFLINE_STORE_DSN", "DATABASE_URL")
+
 	if err := v.ReadInConfig(); err != nil {
 		return nil, err
 	}
@@ -51,8 +55,8 @@ func DefaultConfig() *Config {
 		},
 		Offline: OfflineConfig{
 			Store: OfflineStoreConfig{
-				Driver: "sqlite",
-				DSN:    "./data/offline_tasks.db",
+				Driver: "postgres",
+				DSN:    "postgres://drission:drission@localhost:5432/drission_cloud_driver?sslmode=disable",
 			},
 		},
 		RateLimit: RateLimitConfig{

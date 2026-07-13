@@ -92,8 +92,8 @@ drivers:
 
 offline:
   store:
-    driver: "sqlite"
-    dsn: "./data/offline_tasks.dev.db"
+    driver: "postgres"
+    dsn: "postgres://drission:drission@localhost:5432/drission_cloud_driver?sslmode=disable"
 ```
 
 ### 3. 启动服务
@@ -202,6 +202,8 @@ curl -H "X-Profile-ID: your-profile-id" \
 |---|---|---|
 | `CLOAK_BASE_URL` | cloak.base_url | CloakBrowser-Manager 地址 |
 | `CLOAK_API_KEY` | cloak.api_key | CloakBrowser API Key (可选) |
+| `OFFLINE_STORE_DRIVER` | offline.store.driver | 离线任务仓库类型，默认 postgres |
+| `OFFLINE_STORE_DSN` / `DATABASE_URL` | offline.store.dsn | PostgreSQL 连接串 |
 | `TZ` | server.timezone | 时区 |
 
 完整配置项见 `configs/config.dev.yaml`。

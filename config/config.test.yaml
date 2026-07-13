@@ -16,8 +16,8 @@ drivers:
 
 offline:
   store:
-    driver: "sqlite"
-    dsn: "./data/offline_tasks.test.db"
+    driver: "memory"
+    dsn: ""
 
 rate_limit:
   enabled: false
