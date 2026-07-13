@@ -92,14 +92,12 @@ func (d *Driver) getClient(ctx context.Context, profileID string) (*driver.Pan11
 		return client, nil
 	}
 
-	// Get browser connection
-	conn, err := d.BrowserMgr.GetConnection(ctx, profileID)
-	if err != nil {
-		return nil, errcode.Wrap(errcode.ErrCDPConnection, fmt.Errorf("get browser connection: %w", err))
-	}
-
-	// Get cookie from browser
-	cookieStr, err := conn.GetCookieString(ctx, "115.com")
+	// Read cookies through a short-lived browser session. If no cookies are
+	// found, the browser manager opens 115 once and retries.
+	cookieStr, err := d.BrowserMgr.GetCookieStringFor(ctx, profileID, browser.CookieRequest{
+		Domain:  "115.com",
+		WakeURL: "https://115.com/",
+	})
 	if err != nil {
 		return nil, errcode.Wrap(errcode.ErrCDPConnection, fmt.Errorf("get cookie from browser: %w", err))
 	}

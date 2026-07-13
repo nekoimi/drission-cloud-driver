@@ -54,8 +54,18 @@ func (c *Client) GetProfile(ctx context.Context, profileID string) (*BrowserProf
 
 // StartProfile starts a browser profile.
 func (c *Client) StartProfile(ctx context.Context, profileID string) error {
+	_, err := c.LaunchProfile(ctx, profileID)
+	return err
+}
+
+// LaunchProfile starts a browser profile and returns launch details.
+func (c *Client) LaunchProfile(ctx context.Context, profileID string) (*LaunchResponse, error) {
+	var launch LaunchResponse
 	path := fmt.Sprintf("/api/profiles/%s/launch", profileID)
-	return c.do(ctx, http.MethodPost, path, nil, nil)
+	if err := c.do(ctx, http.MethodPost, path, nil, &launch); err != nil {
+		return nil, err
+	}
+	return &launch, nil
 }
 
 // StopProfile stops a browser profile.
