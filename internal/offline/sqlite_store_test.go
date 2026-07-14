@@ -30,7 +30,13 @@ func TestSQLiteStorePersistsRecords(t *testing.T) {
 			Name:           "movie",
 			Progress:       12.5,
 			SavePath:       "/downloads",
-			Files:          []drivers.FileInfo{{ID: "file-1", Name: "movie.mp4"}},
+			SaveDir: &drivers.FileInfo{
+				ID:    "dir-1",
+				Name:  "downloads",
+				Path:  "/downloads",
+				IsDir: true,
+			},
+			Files: []drivers.FileInfo{{ID: "file-1", Name: "movie.mp4"}},
 		},
 	}
 
@@ -63,6 +69,9 @@ func TestSQLiteStorePersistsRecords(t *testing.T) {
 	}
 	if got.Metadata["source"] != "test" {
 		t.Fatalf("metadata source = %q, want test", got.Metadata["source"])
+	}
+	if got.Task.SaveDir == nil || got.Task.SaveDir.ID != "dir-1" {
+		t.Fatalf("save dir = %#v, want persisted dir", got.Task.SaveDir)
 	}
 	if len(got.Task.Files) != 1 || got.Task.Files[0].ID != "file-1" {
 		t.Fatalf("files = %#v, want persisted file", got.Task.Files)

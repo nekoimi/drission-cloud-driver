@@ -63,7 +63,7 @@ func (s *PostgresStore) Put(task OfflineTaskRecord) error {
 func (s *PostgresStore) Get(taskID string) (OfflineTaskRecord, bool) {
 	row := s.db.QueryRow(`
 SELECT task_id, platform, profile_id, client_task_id, url, category, save_path,
-       metadata_json, provider_task_id, status, name, progress, error_code,
+       save_dir_json, metadata_json, provider_task_id, status, name, progress, error_code,
        error_message, files_json, task_created_at, task_updated_at, created_at, updated_at
 FROM offline_tasks
 WHERE task_id = $1
@@ -80,7 +80,7 @@ func (s *PostgresStore) GetByClientTask(platform, profileID, clientTaskID string
 
 	row := s.db.QueryRow(`
 SELECT task_id, platform, profile_id, client_task_id, url, category, save_path,
-       metadata_json, provider_task_id, status, name, progress, error_code,
+       save_dir_json, metadata_json, provider_task_id, status, name, progress, error_code,
        error_message, files_json, task_created_at, task_updated_at, created_at, updated_at
 FROM offline_tasks
 WHERE client_key = $1
@@ -116,6 +116,7 @@ CREATE TABLE IF NOT EXISTS offline_tasks (
     url TEXT NOT NULL DEFAULT '',
     category TEXT NOT NULL DEFAULT '',
     save_path TEXT NOT NULL DEFAULT '',
+    save_dir_json TEXT NOT NULL DEFAULT '',
     metadata_json TEXT NOT NULL DEFAULT '{}',
     provider_task_id TEXT NOT NULL DEFAULT '',
     status TEXT NOT NULL DEFAULT '',
@@ -147,6 +148,10 @@ func (s *PostgresStore) save(task OfflineTaskRecord) error {
 	if err != nil {
 		return fmt.Errorf("marshal offline task metadata: %w", err)
 	}
+	saveDirJSON, err := marshalJSON(task.Task.SaveDir, (*drivers.FileInfo)(nil))
+	if err != nil {
+		return fmt.Errorf("marshal offline task save dir: %w", err)
+	}
 	filesJSON, err := marshalJSON(task.Task.Files, []drivers.FileInfo{})
 	if err != nil {
 		return fmt.Errorf("marshal offline task files: %w", err)
@@ -160,10 +165,10 @@ func (s *PostgresStore) save(task OfflineTaskRecord) error {
 	_, err = s.db.Exec(`
 INSERT INTO offline_tasks (
     task_id, platform, profile_id, client_task_id, client_key, url, category,
-    save_path, metadata_json, provider_task_id, status, name, progress,
+    save_path, save_dir_json, metadata_json, provider_task_id, status, name, progress,
     error_code, error_message, files_json, task_created_at, task_updated_at,
     created_at, updated_at
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
 ON CONFLICT(task_id) DO UPDATE SET
     platform = excluded.platform,
     profile_id = excluded.profile_id,
@@ -172,6 +177,7 @@ ON CONFLICT(task_id) DO UPDATE SET
     url = excluded.url,
     category = excluded.category,
     save_path = excluded.save_path,
+    save_dir_json = excluded.save_dir_json,
     metadata_json = excluded.metadata_json,
     provider_task_id = excluded.provider_task_id,
     status = excluded.status,
@@ -192,6 +198,7 @@ ON CONFLICT(task_id) DO UPDATE SET
 		task.URL,
 		task.Category,
 		task.SavePath,
+		string(saveDirJSON),
 		string(metadataJSON),
 		task.Task.ProviderTaskID,
 		string(task.Task.Status),

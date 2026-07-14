@@ -151,10 +151,27 @@ func cloneRecord(task OfflineTaskRecord) OfflineTaskRecord {
 		}
 		task.Metadata = metadata
 	}
+	if task.Task.SaveDir != nil {
+		saveDir := cloneFileInfo(*task.Task.SaveDir)
+		task.Task.SaveDir = &saveDir
+	}
 	if task.Task.Files != nil {
 		files := make([]drivers.FileInfo, len(task.Task.Files))
-		copy(files, task.Task.Files)
+		for i := range task.Task.Files {
+			files[i] = cloneFileInfo(task.Task.Files[i])
+		}
 		task.Task.Files = files
 	}
 	return task
+}
+
+func cloneFileInfo(file drivers.FileInfo) drivers.FileInfo {
+	if file.Extra != nil {
+		extra := make(map[string]any, len(file.Extra))
+		for key, value := range file.Extra {
+			extra[key] = value
+		}
+		file.Extra = extra
+	}
+	return file
 }

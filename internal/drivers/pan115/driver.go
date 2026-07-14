@@ -143,6 +143,7 @@ func (d *Driver) AddOfflineTask(ctx context.Context, profileID string, req *driv
 			return nil, err
 		}
 	}
+	saveDir := d.dirInfoFromPath(saveDirID, req.SavePath)
 
 	hashes, err := client.AddOfflineTaskURIs([]string{req.URL}, saveDirID)
 	if err != nil {
@@ -158,6 +159,7 @@ func (d *Driver) AddOfflineTask(ctx context.Context, profileID string, req *driv
 		ProviderTaskID: hashes[0],
 		Status:         drivers.TaskPending,
 		SavePath:       req.SavePath,
+		SaveDir:        saveDir,
 	}, nil
 }
 
@@ -769,14 +771,16 @@ func joinRemotePath(dirPath string, name string) string {
 
 func toFileInfo(f driver.File, filePath string) drivers.FileInfo {
 	return drivers.FileInfo{
-		ID:        f.GetID(),
-		FileID:    f.GetID(),
-		Name:      f.Name,
-		Path:      filePath,
-		IsDir:     f.IsDirectory,
-		Size:      f.Size,
-		CreatedAt: f.CreateTime,
-		UpdatedAt: f.UpdateTime,
+		ID:           f.GetID(),
+		FileID:       f.GetID(),
+		ParentID:     f.ParentID,
+		Name:         f.Name,
+		Path:         filePath,
+		RelativePath: cleanRemotePath(filePath),
+		IsDir:        f.IsDirectory,
+		Size:         f.Size,
+		CreatedAt:    f.CreateTime,
+		UpdatedAt:    f.UpdateTime,
 		Extra: map[string]any{
 			"pick_code": f.PickCode,
 			"sha1":      f.Sha1,
@@ -787,7 +791,14 @@ func toFileInfo(f driver.File, filePath string) drivers.FileInfo {
 
 func (d *Driver) toOfflineTask(client *driver.Pan115Client, task *driver.OfflineTask) *drivers.OfflineTask {
 	result := toOfflineTask(task)
-	if task == nil || result.Status != drivers.TaskCompleted {
+	if task == nil {
+		return result
+	}
+
+	if task.DirId != "" {
+		result.SaveDir = d.dirInfoByID(client, task.DirId, "")
+	}
+	if result.Status != drivers.TaskCompleted {
 		return result
 	}
 
@@ -806,9 +817,18 @@ func toOfflineTask(task *driver.OfflineTask) *drivers.OfflineTask {
 		Status:         mapOfflineStatus(task),
 		Name:           task.Name,
 		Progress:       task.Percent / 100.0,
+		CreatedAt:      unixTime(task.AddTime),
+		UpdatedAt:      unixTime(task.UpdateTime),
 	}
 
 	return result
+}
+
+func unixTime(timestamp int64) time.Time {
+	if timestamp <= 0 {
+		return time.Time{}
+	}
+	return time.Unix(timestamp, 0)
 }
 
 func (d *Driver) locateOfflineTaskFiles(client *driver.Pan115Client, task *driver.OfflineTask) []drivers.FileInfo {
@@ -890,6 +910,82 @@ func (d *Driver) expandOfflineTaskEntry(client *driver.Pan115Client, entry drive
 		result = append(result, d.expandOfflineTaskEntry(client, child, entryPath, depth+1)...)
 	}
 	return result
+}
+
+func (d *Driver) dirInfoFromPath(dirID, remotePath string) *drivers.FileInfo {
+	cleaned := cleanRemotePath(remotePath)
+	if cleaned == "" {
+		return &drivers.FileInfo{
+			ID:     "0",
+			FileID: "0",
+			Name:   "/",
+			Path:   "/",
+			IsDir:  true,
+		}
+	}
+
+	return &drivers.FileInfo{
+		ID:           dirID,
+		FileID:       dirID,
+		Name:         path.Base(cleaned),
+		Path:         "/" + cleaned,
+		RelativePath: cleaned,
+		IsDir:        true,
+	}
+}
+
+func (d *Driver) dirInfoByID(client *driver.Pan115Client, dirID string, fallbackPath string) *drivers.FileInfo {
+	if dirID == "" || dirID == "0" {
+		return d.dirInfoFromPath("0", fallbackPath)
+	}
+
+	if stat, err := client.Stat(dirID); err == nil && stat != nil {
+		remotePath := dirStatPath(stat)
+		if remotePath == "" {
+			remotePath = fallbackPath
+		}
+		info := d.dirInfoFromPath(dirID, remotePath)
+		info.Name = stat.Name
+		info.CreatedAt = stat.CreateTime
+		info.UpdatedAt = stat.UpdateTime
+		if len(stat.Parents) > 0 {
+			info.ParentID = stat.Parents[len(stat.Parents)-1].ID
+		}
+		return info
+	}
+
+	if file, err := client.GetFile(dirID); err == nil && file != nil && file.GetID() != "" {
+		info := toFileInfo(*file, fallbackPath)
+		if info.Path == "" {
+			info.Path = "/" + cleanRemotePath(file.Name)
+		}
+		info.RelativePath = cleanRemotePath(info.Path)
+		info.IsDir = true
+		return &info
+	}
+
+	return d.dirInfoFromPath(dirID, fallbackPath)
+}
+
+func dirStatPath(stat *driver.FileStatInfo) string {
+	if stat == nil {
+		return ""
+	}
+
+	parts := make([]string, 0, len(stat.Parents)+1)
+	for _, parent := range stat.Parents {
+		if parent == nil || parent.Name == "" {
+			continue
+		}
+		parts = append(parts, parent.Name)
+	}
+	if stat.Name != "" {
+		parts = append(parts, stat.Name)
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return "/" + path.Join(parts...)
 }
 
 func matchesOfflineTaskFile(task *driver.OfflineTask, file driver.File) bool {

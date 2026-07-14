@@ -16,7 +16,20 @@ func TestMemoryStorePutAndGet(t *testing.T) {
 		Task: drivers.OfflineTask{
 			TaskID: "115:abc",
 			Status: drivers.TaskPending,
-			Files:  []drivers.FileInfo{{ID: "file-1", Name: "movie.mp4"}},
+			SaveDir: &drivers.FileInfo{
+				ID:    "dir-1",
+				Name:  "downloads",
+				Path:  "/downloads",
+				IsDir: true,
+				Extra: map[string]any{
+					"provider": "115",
+				},
+			},
+			Files: []drivers.FileInfo{{
+				ID:    "file-1",
+				Name:  "movie.mp4",
+				Extra: map[string]any{"pick_code": "pc"},
+			}},
 		},
 	}
 
@@ -36,14 +49,23 @@ func TestMemoryStorePutAndGet(t *testing.T) {
 	}
 
 	got.Metadata["source"] = "changed"
+	got.Task.SaveDir.Name = "changed"
+	got.Task.SaveDir.Extra["provider"] = "changed"
 	got.Task.Files[0].Name = "changed.mp4"
+	got.Task.Files[0].Extra["pick_code"] = "changed"
 
 	again, _ := store.Get("115:abc")
 	if again.Metadata["source"] != "test" {
 		t.Fatalf("stored metadata was mutated through returned record")
 	}
+	if again.Task.SaveDir.Name != "downloads" || again.Task.SaveDir.Extra["provider"] != "115" {
+		t.Fatalf("stored save dir was mutated through returned record")
+	}
 	if again.Task.Files[0].Name != "movie.mp4" {
 		t.Fatalf("stored files were mutated through returned record")
+	}
+	if again.Task.Files[0].Extra["pick_code"] != "pc" {
+		t.Fatalf("stored file extra was mutated through returned record")
 	}
 }
 

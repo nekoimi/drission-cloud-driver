@@ -239,8 +239,14 @@ func TestNormalizeStoredOfflineTaskPrefixesSavePath(t *testing.T) {
 	if task.Files[0].Path != wantPath {
 		t.Fatalf("file path = %q, want %q", task.Files[0].Path, wantPath)
 	}
+	if task.Files[0].RelativePath != "ADN-776-C/ADN-776-C.mp4" {
+		t.Fatalf("relative path = %q, want task-local path", task.Files[0].RelativePath)
+	}
 	if task.Files[0].IsDir {
 		t.Fatalf("normalized file should be a leaf file")
+	}
+	if task.SaveDir == nil || task.SaveDir.Path != record.SavePath {
+		t.Fatalf("save dir = %+v, want path %q", task.SaveDir, record.SavePath)
 	}
 }
 

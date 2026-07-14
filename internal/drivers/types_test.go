@@ -81,11 +81,13 @@ func TestOfflineTaskListJSONShape(t *testing.T) {
 
 func TestFileInfoJSONIncludesFileIDAlias(t *testing.T) {
 	file := FileInfo{
-		ID:     "file-1",
-		FileID: "file-1",
-		Name:   "movie.mp4",
-		Path:   "/downloads/movie.mp4",
-		Size:   123,
+		ID:           "file-1",
+		FileID:       "file-1",
+		ParentID:     "dir-1",
+		Name:         "movie.mp4",
+		Path:         "/downloads/movie.mp4",
+		RelativePath: "movie.mp4",
+		Size:         123,
 	}
 
 	bytes, err := json.Marshal(file)
@@ -100,6 +102,9 @@ func TestFileInfoJSONIncludesFileIDAlias(t *testing.T) {
 	if got["id"] != "file-1" || got["file_id"] != "file-1" {
 		t.Fatalf("file id aliases missing in %s", string(bytes))
 	}
+	if got["parent_id"] != "dir-1" || got["relative_path"] != "movie.mp4" {
+		t.Fatalf("file path metadata missing in %s", string(bytes))
+	}
 	if _, ok := got["is_dir"]; !ok {
 		t.Fatalf("is_dir field missing in %s", string(bytes))
 	}
@@ -110,8 +115,15 @@ func TestFileInfoJSONIncludesFileIDAlias(t *testing.T) {
 
 func TestOfflineTaskJSONIncludesEmptyFiles(t *testing.T) {
 	task := OfflineTask{
-		TaskID: "task-1",
-		Status: TaskCompleted,
+		TaskID:   "task-1",
+		Status:   TaskCompleted,
+		SavePath: "/downloads",
+		SaveDir: &FileInfo{
+			ID:    "dir-1",
+			Name:  "downloads",
+			Path:  "/downloads",
+			IsDir: true,
+		},
 	}
 
 	bytes, err := json.Marshal(task)
@@ -129,5 +141,8 @@ func TestOfflineTaskJSONIncludesEmptyFiles(t *testing.T) {
 	}
 	if len(files) != 0 {
 		t.Fatalf("files length = %d, want 0", len(files))
+	}
+	if _, ok := got["save_dir"].(map[string]any); !ok {
+		t.Fatalf("save_dir field missing in %s", string(bytes))
 	}
 }

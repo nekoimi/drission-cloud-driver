@@ -245,8 +245,26 @@ func normalizeStoredOfflineTask(record *offline.OfflineTaskRecord, task *drivers
 	if task.SavePath == "" {
 		task.SavePath = record.SavePath
 	}
+	if task.SaveDir == nil && record.Task.SaveDir != nil {
+		saveDir := *record.Task.SaveDir
+		task.SaveDir = &saveDir
+	}
+	if task.SaveDir == nil && task.SavePath != "" {
+		task.SaveDir = &drivers.FileInfo{
+			Name:         path.Base(strings.Trim(task.SavePath, "/")),
+			Path:         normalizeRemotePath(task.SavePath),
+			RelativePath: strings.Trim(normalizeRemotePath(task.SavePath), "/"),
+			IsDir:        true,
+		}
+	}
+	if task.SaveDir != nil && task.SavePath != "" {
+		task.SaveDir.Path = normalizeRemotePath(task.SavePath)
+		task.SaveDir.RelativePath = strings.Trim(task.SaveDir.Path, "/")
+		task.SaveDir.IsDir = true
+	}
 	if task.SavePath != "" {
 		for i := range task.Files {
+			task.Files[i].RelativePath = offlineFileRelativePath(task.SavePath, task.Files[i].Path, task.Files[i].RelativePath)
 			task.Files[i].Path = prefixOfflineFilePath(task.SavePath, task.Files[i].Path)
 		}
 	}
@@ -262,6 +280,34 @@ func appendOfflineTaskWarning(task *drivers.OfflineTask, warning string) {
 		}
 	}
 	task.Warnings = append(task.Warnings, warning)
+}
+
+func normalizeRemotePath(remotePath string) string {
+	remotePath = strings.TrimSpace(remotePath)
+	if remotePath == "" {
+		return "/"
+	}
+	return "/" + strings.Trim(strings.ReplaceAll(remotePath, "\\", "/"), "/")
+}
+
+func offlineFileRelativePath(savePath, filePath, relativePath string) string {
+	if strings.TrimSpace(relativePath) != "" {
+		return strings.Trim(strings.ReplaceAll(relativePath, "\\", "/"), "/")
+	}
+
+	savePath = normalizeRemotePath(savePath)
+	filePath = normalizeRemotePath(filePath)
+	if strings.EqualFold(filePath, savePath) {
+		return ""
+	}
+
+	lowerFilePath := strings.ToLower(filePath)
+	lowerSavePath := strings.ToLower(savePath)
+	if strings.HasPrefix(lowerFilePath, lowerSavePath+"/") {
+		return strings.TrimPrefix(filePath[len(savePath):], "/")
+	}
+
+	return strings.Trim(filePath, "/")
 }
 
 func prefixOfflineFilePath(savePath, filePath string) string {

@@ -7,16 +7,18 @@ import (
 
 // FileInfo represents a file or directory in cloud storage.
 type FileInfo struct {
-	ID        string         `json:"id"`
-	FileID    string         `json:"file_id,omitempty"`
-	Name      string         `json:"name"`
-	Path      string         `json:"path"`
-	IsDir     bool           `json:"is_dir"`
-	Size      int64          `json:"size"`
-	MimeType  string         `json:"mime_type,omitempty"`
-	CreatedAt time.Time      `json:"created_at,omitempty"`
-	UpdatedAt time.Time      `json:"updated_at,omitempty"`
-	Extra     map[string]any `json:"extra,omitempty"`
+	ID           string         `json:"id"`
+	FileID       string         `json:"file_id,omitempty"`
+	ParentID     string         `json:"parent_id,omitempty"`
+	Name         string         `json:"name"`
+	Path         string         `json:"path"`
+	RelativePath string         `json:"relative_path,omitempty"`
+	IsDir        bool           `json:"is_dir"`
+	Size         int64          `json:"size"`
+	MimeType     string         `json:"mime_type,omitempty"`
+	CreatedAt    time.Time      `json:"created_at,omitempty"`
+	UpdatedAt    time.Time      `json:"updated_at,omitempty"`
+	Extra        map[string]any `json:"extra,omitempty"`
 }
 
 // AddTaskRequest is the request to add an offline download task.
@@ -48,6 +50,7 @@ type OfflineTask struct {
 	Name           string     `json:"name,omitempty"`
 	Progress       float64    `json:"progress,omitempty"`
 	SavePath       string     `json:"save_path,omitempty"`
+	SaveDir        *FileInfo  `json:"save_dir,omitempty"`
 	ErrorCode      string     `json:"error_code,omitempty"`
 	ErrorMessage   string     `json:"error_message,omitempty"`
 	Files          []FileInfo `json:"files"`
