@@ -151,8 +151,8 @@ func TestAddOfflineTaskIsIdempotentByClientTaskID(t *testing.T) {
 	if fake.addCalls != 1 {
 		t.Fatalf("AddOfflineTask calls = %d, want 1", fake.addCalls)
 	}
-	if fake.queryCalls != 1 {
-		t.Fatalf("QueryOfflineTask calls = %d, want 1", fake.queryCalls)
+	if fake.queryCalls != 0 {
+		t.Fatalf("QueryOfflineTask calls = %d, want 0", fake.queryCalls)
 	}
 
 	var got struct {
@@ -164,12 +164,15 @@ func TestAddOfflineTaskIsIdempotentByClientTaskID(t *testing.T) {
 	if got.Data.TaskID != "115:abc" {
 		t.Fatalf("task_id = %q, want %q", got.Data.TaskID, "115:abc")
 	}
-	if got.Data.Status != drivers.TaskRunning {
-		t.Fatalf("status = %q, want %q", got.Data.Status, drivers.TaskRunning)
+	if got.Data.Status != drivers.TaskPending {
+		t.Fatalf("status = %q, want %q", got.Data.Status, drivers.TaskPending)
+	}
+	if fake.queryCalls != 0 {
+		t.Fatalf("provider query calls = %d, want 0", fake.queryCalls)
 	}
 }
 
-func TestGetOfflineTaskFallsBackToStoredRecord(t *testing.T) {
+func TestGetOfflineTaskReadsStoredRecordWithoutProviderQuery(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	log := zap.NewNop()
 
@@ -212,6 +215,9 @@ func TestGetOfflineTaskFallsBackToStoredRecord(t *testing.T) {
 	}
 	if got.Data.Status != drivers.TaskCompleted {
 		t.Fatalf("status = %q, want %q", got.Data.Status, drivers.TaskCompleted)
+	}
+	if fake.queryCalls != 0 {
+		t.Fatalf("provider query calls = %d, want 0", fake.queryCalls)
 	}
 }
 

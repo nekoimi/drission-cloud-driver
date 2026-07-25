@@ -22,6 +22,10 @@ services:
       CLOAK_API_KEY: ""
       OFFLINE_STORE_DRIVER: postgres
       OFFLINE_STORE_DSN: postgres://drission:drission@postgres:5432/drission_cloud_driver?sslmode=disable
+      OFFLINE_SYNC_ENABLED: "true"
+      OFFLINE_SYNC_INTERVAL_SECONDS: "15"
+      OFFLINE_SYNC_CLEANUP_COMPLETED: "true"
+      OFFLINE_SYNC_CLEANUP_GRACE_SECONDS: "30"
 
     volumes:
       # Mount production config read-only so it can be changed without rebuilding

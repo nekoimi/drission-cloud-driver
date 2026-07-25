@@ -49,11 +49,19 @@ type DriversConfig struct {
 
 type OfflineConfig struct {
 	Store OfflineStoreConfig `mapstructure:"store"`
+	Sync  OfflineSyncConfig  `mapstructure:"sync"`
 }
 
 type OfflineStoreConfig struct {
 	Driver string `mapstructure:"driver"` // memory / postgres / sqlite
 	DSN    string `mapstructure:"dsn"`
+}
+
+type OfflineSyncConfig struct {
+	Enabled             bool `mapstructure:"enabled"`
+	IntervalSeconds     int  `mapstructure:"interval_seconds"`
+	CleanupCompleted    bool `mapstructure:"cleanup_completed"`
+	CleanupGraceSeconds int  `mapstructure:"cleanup_grace_seconds"`
 }
 
 type RateLimitConfig struct {

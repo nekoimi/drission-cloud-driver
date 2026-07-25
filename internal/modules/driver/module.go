@@ -14,7 +14,9 @@ func init() {
 	module.Register(&driverModule{}, module.ScopeHTTP)
 }
 
-type driverModule struct{}
+type driverModule struct {
+	syncer *offlineSyncer
+}
 
 func (m *driverModule) Name() string {
 	return ModuleName
@@ -71,7 +73,28 @@ func (m *driverModule) Register(ctx *framework.ModuleContext) error {
 	return nil
 }
 
-func (m *driverModule) Shutdown(_ context.Context, moduleCtx *framework.ModuleContext) error {
+func (m *driverModule) Boot(ctx context.Context, moduleCtx *framework.ModuleContext) error {
+	if !moduleCtx.ModuleEnabled(ModuleName) {
+		return nil
+	}
+	m.syncer = newOfflineSyncer(
+		moduleCtx.OfflineStore,
+		moduleCtx.DriverRegistry,
+		moduleCtx.BrowserManager,
+		moduleCtx.Config.Offline.Sync,
+		moduleCtx.Logger,
+	)
+	m.syncer.Start(ctx)
+	if moduleCtx.Config.Offline.Sync.Enabled {
+		moduleCtx.Logger.Info("offline task syncer started")
+	}
+	return nil
+}
+
+func (m *driverModule) Shutdown(ctx context.Context, moduleCtx *framework.ModuleContext) error {
+	if err := m.syncer.Stop(ctx); err != nil {
+		return err
+	}
 	if moduleCtx.DriverRegistry != nil {
 		return moduleCtx.DriverRegistry.Close()
 	}

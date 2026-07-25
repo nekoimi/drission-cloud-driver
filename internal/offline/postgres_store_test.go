@@ -14,6 +14,8 @@ func TestSanitizePostgresRecordRemovesNULBytes(t *testing.T) {
 		URL:          "magnet:\x00?xt=urn:btih:abc",
 		Category:     "mov\x00ie",
 		SavePath:     "/down\x00loads",
+		SyncError:    "sync\x00error",
+		CleanupError: "cleanup\x00error",
 		Task: drivers.OfflineTask{
 			TaskID:         "115:\x00abc",
 			ProviderTaskID: "a\x00bc",
@@ -41,6 +43,8 @@ func TestSanitizePostgresRecordRemovesNULBytes(t *testing.T) {
 		got.Task.SavePath,
 		got.Task.ErrorCode,
 		got.Task.ErrorMessage,
+		got.SyncError,
+		got.CleanupError,
 	}
 	for _, value := range values {
 		if hasNUL(value) {

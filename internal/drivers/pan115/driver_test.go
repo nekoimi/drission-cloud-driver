@@ -33,6 +33,17 @@ func TestMapOfflineStatus(t *testing.T) {
 	}
 }
 
+func TestMapOfflineStatusTreatsMaterializedFileAsCompleted(t *testing.T) {
+	task := &pan115driver.OfflineTask{
+		Status:  1,
+		Percent: 100,
+		FileId:  "file-1",
+	}
+	if got := mapOfflineStatus(task); got != drivers.TaskCompleted {
+		t.Fatalf("mapOfflineStatus() = %q, want completed", got)
+	}
+}
+
 func TestToOfflineTaskBuildsUnifiedTaskID(t *testing.T) {
 	task := &pan115driver.OfflineTask{
 		InfoHash: "abc",

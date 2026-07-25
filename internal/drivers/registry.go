@@ -2,6 +2,7 @@ package drivers
 
 import (
 	"fmt"
+	"sync"
 
 	"go.uber.org/zap"
 
@@ -13,6 +14,7 @@ type Factory func(browserMgr *browser.Manager, logger *zap.Logger) (Driver, erro
 
 // Registry manages driver factories and instances.
 type Registry struct {
+	mu        sync.Mutex
 	factories map[string]Factory
 	drivers   map[string]Driver
 	logger    *zap.Logger
@@ -29,12 +31,16 @@ func NewRegistry(logger *zap.Logger) *Registry {
 
 // Register registers a driver factory for a platform.
 func (r *Registry) Register(platform string, factory Factory) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	r.factories[platform] = factory
 	r.logger.Info("registered driver", zap.String("platform", platform))
 }
 
 // Get returns a driver for the given platform, creating it if necessary.
 func (r *Registry) Get(platform string, browserMgr *browser.Manager) (Driver, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	if driver, ok := r.drivers[platform]; ok {
 		return driver, nil
 	}
@@ -55,6 +61,8 @@ func (r *Registry) Get(platform string, browserMgr *browser.Manager) (Driver, er
 
 // ListPlatforms returns all registered platform names.
 func (r *Registry) ListPlatforms() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	platforms := make([]string, 0, len(r.factories))
 	for p := range r.factories {
 		platforms = append(platforms, p)
@@ -64,6 +72,8 @@ func (r *Registry) ListPlatforms() []string {
 
 // Close releases resources held by instantiated drivers.
 func (r *Registry) Close() error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	for platform, driver := range r.drivers {
 		closer, ok := driver.(interface{ Close() error })
 		if !ok {

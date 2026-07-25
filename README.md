@@ -204,6 +204,10 @@ curl -H "X-Profile-ID: your-profile-id" \
 | `CLOAK_API_KEY` | cloak.api_key | CloakBrowser API Key (可选) |
 | `OFFLINE_STORE_DRIVER` | offline.store.driver | 离线任务仓库类型，默认 postgres |
 | `OFFLINE_STORE_DSN` / `DATABASE_URL` | offline.store.dsn | PostgreSQL 连接串 |
+| `OFFLINE_SYNC_ENABLED` | offline.sync.enabled | 启用后台离线任务状态同步 |
+| `OFFLINE_SYNC_INTERVAL_SECONDS` | offline.sync.interval_seconds | 同步间隔，默认 15 秒 |
+| `OFFLINE_SYNC_CLEANUP_COMPLETED` | offline.sync.cleanup_completed | 完成后清理平台离线任务记录 |
+| `OFFLINE_SYNC_CLEANUP_GRACE_SECONDS` | offline.sync.cleanup_grace_seconds | 完成到清理之间的宽限时间 |
 | `TZ` | server.timezone | 时区 |
 
 完整配置项见 `configs/config.dev.yaml`。

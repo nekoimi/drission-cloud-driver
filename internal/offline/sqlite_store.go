@@ -68,12 +68,15 @@ func (s *SQLiteStore) Get(taskID string) (OfflineTaskRecord, bool) {
 	row := s.db.QueryRow(`
 SELECT task_id, platform, profile_id, client_task_id, url, category, save_path,
        save_dir_json, metadata_json, provider_task_id, status, name, progress, error_code,
-       error_message, files_json, task_created_at, task_updated_at, created_at, updated_at
+       error_message, files_json, provider_status, task_created_at, task_updated_at,
+       last_synced_at, sync_attempts, sync_error, completed_at, remote_cleaned_at,
+       cleanup_attempts, cleanup_error, created_at, updated_at
 FROM offline_tasks
 WHERE task_id = ?
 `, taskID)
 
-	return scanRecord(row)
+	record, err := scanRecord(row)
+	return record, err == nil
 }
 
 func (s *SQLiteStore) GetByClientTask(platform, profileID, clientTaskID string) (OfflineTaskRecord, bool) {
@@ -85,12 +88,45 @@ func (s *SQLiteStore) GetByClientTask(platform, profileID, clientTaskID string) 
 	row := s.db.QueryRow(`
 SELECT task_id, platform, profile_id, client_task_id, url, category, save_path,
        save_dir_json, metadata_json, provider_task_id, status, name, progress, error_code,
-       error_message, files_json, task_created_at, task_updated_at, created_at, updated_at
+       error_message, files_json, provider_status, task_created_at, task_updated_at,
+       last_synced_at, sync_attempts, sync_error, completed_at, remote_cleaned_at,
+       cleanup_attempts, cleanup_error, created_at, updated_at
 FROM offline_tasks
 WHERE client_key = ?
 `, key)
 
-	return scanRecord(row)
+	record, err := scanRecord(row)
+	return record, err == nil
+}
+
+func (s *SQLiteStore) List(platform, profileID string) ([]OfflineTaskRecord, error) {
+	rows, err := s.db.Query(`
+SELECT task_id, platform, profile_id, client_task_id, url, category, save_path,
+       save_dir_json, metadata_json, provider_task_id, status, name, progress, error_code,
+       error_message, files_json, provider_status, task_created_at, task_updated_at,
+       last_synced_at, sync_attempts, sync_error, completed_at, remote_cleaned_at,
+       cleanup_attempts, cleanup_error, created_at, updated_at
+FROM offline_tasks
+WHERE (? = '' OR platform = ?) AND (? = '' OR profile_id = ?)
+ORDER BY created_at DESC
+`, platform, platform, profileID, profileID)
+	if err != nil {
+		return nil, fmt.Errorf("list sqlite offline tasks: %w", err)
+	}
+	defer rows.Close()
+
+	records := make([]OfflineTaskRecord, 0)
+	for rows.Next() {
+		record, err := scanRecord(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan sqlite offline task: %w", err)
+		}
+		records = append(records, record)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate sqlite offline tasks: %w", err)
+	}
+	return records, nil
 }
 
 func (s *SQLiteStore) Update(task OfflineTaskRecord) error {
@@ -136,8 +172,16 @@ CREATE TABLE IF NOT EXISTS offline_tasks (
     error_code TEXT NOT NULL DEFAULT '',
     error_message TEXT NOT NULL DEFAULT '',
     files_json TEXT NOT NULL DEFAULT '[]',
+    provider_status INTEGER NOT NULL DEFAULT 0,
     task_created_at TEXT NOT NULL DEFAULT '',
     task_updated_at TEXT NOT NULL DEFAULT '',
+    last_synced_at TEXT NOT NULL DEFAULT '',
+    sync_attempts INTEGER NOT NULL DEFAULT 0,
+    sync_error TEXT NOT NULL DEFAULT '',
+    completed_at TEXT NOT NULL DEFAULT '',
+    remote_cleaned_at TEXT NOT NULL DEFAULT '',
+    cleanup_attempts INTEGER NOT NULL DEFAULT 0,
+    cleanup_error TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
@@ -147,6 +191,21 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_offline_tasks_client_key
 `)
 	if err != nil {
 		return fmt.Errorf("migrate sqlite offline store: %w", err)
+	}
+	for _, migration := range []string{
+		`ALTER TABLE offline_tasks ADD COLUMN save_dir_json TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE offline_tasks ADD COLUMN provider_status INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE offline_tasks ADD COLUMN last_synced_at TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE offline_tasks ADD COLUMN sync_attempts INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE offline_tasks ADD COLUMN sync_error TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE offline_tasks ADD COLUMN completed_at TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE offline_tasks ADD COLUMN remote_cleaned_at TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE offline_tasks ADD COLUMN cleanup_attempts INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE offline_tasks ADD COLUMN cleanup_error TEXT NOT NULL DEFAULT ''`,
+	} {
+		if _, err := s.db.Exec(migration); err != nil && !strings.Contains(strings.ToLower(err.Error()), "duplicate column") {
+			return fmt.Errorf("migrate sqlite offline store columns: %w", err)
+		}
 	}
 
 	return nil
@@ -178,8 +237,9 @@ INSERT INTO offline_tasks (
     task_id, platform, profile_id, client_task_id, client_key, url, category,
     save_path, save_dir_json, metadata_json, provider_task_id, status, name, progress,
     error_code, error_message, files_json, task_created_at, task_updated_at,
-    created_at, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    provider_status, last_synced_at, sync_attempts, sync_error, completed_at,
+    remote_cleaned_at, cleanup_attempts, cleanup_error, created_at, updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(task_id) DO UPDATE SET
     platform = excluded.platform,
     profile_id = excluded.profile_id,
@@ -197,8 +257,16 @@ ON CONFLICT(task_id) DO UPDATE SET
     error_code = excluded.error_code,
     error_message = excluded.error_message,
     files_json = excluded.files_json,
+    provider_status = excluded.provider_status,
     task_created_at = excluded.task_created_at,
     task_updated_at = excluded.task_updated_at,
+    last_synced_at = excluded.last_synced_at,
+    sync_attempts = excluded.sync_attempts,
+    sync_error = excluded.sync_error,
+    completed_at = excluded.completed_at,
+    remote_cleaned_at = excluded.remote_cleaned_at,
+    cleanup_attempts = excluded.cleanup_attempts,
+    cleanup_error = excluded.cleanup_error,
     updated_at = excluded.updated_at
 `,
 		task.Task.TaskID,
@@ -220,6 +288,14 @@ ON CONFLICT(task_id) DO UPDATE SET
 		string(filesJSON),
 		formatTime(task.Task.CreatedAt),
 		formatTime(task.Task.UpdatedAt),
+		task.Task.ProviderStatus,
+		formatTime(task.LastSyncedAt),
+		task.SyncAttempts,
+		task.SyncError,
+		formatTime(task.CompletedAt),
+		formatTime(task.RemoteCleanedAt),
+		task.CleanupAttempts,
+		task.CleanupError,
 		formatTime(task.CreatedAt),
 		formatTime(task.UpdatedAt),
 	)
@@ -230,7 +306,11 @@ ON CONFLICT(task_id) DO UPDATE SET
 	return nil
 }
 
-func scanRecord(row *sql.Row) (OfflineTaskRecord, bool) {
+type rowScanner interface {
+	Scan(dest ...any) error
+}
+
+func scanRecord(row rowScanner) (OfflineTaskRecord, error) {
 	var record OfflineTaskRecord
 	var saveDirJSON string
 	var metadataJSON string
@@ -238,6 +318,9 @@ func scanRecord(row *sql.Row) (OfflineTaskRecord, bool) {
 	var status string
 	var taskCreatedAt string
 	var taskUpdatedAt string
+	var lastSyncedAt string
+	var completedAt string
+	var remoteCleanedAt string
 	var createdAt string
 	var updatedAt string
 
@@ -258,22 +341,33 @@ func scanRecord(row *sql.Row) (OfflineTaskRecord, bool) {
 		&record.Task.ErrorCode,
 		&record.Task.ErrorMessage,
 		&filesJSON,
+		&record.Task.ProviderStatus,
 		&taskCreatedAt,
 		&taskUpdatedAt,
+		&lastSyncedAt,
+		&record.SyncAttempts,
+		&record.SyncError,
+		&completedAt,
+		&remoteCleanedAt,
+		&record.CleanupAttempts,
+		&record.CleanupError,
 		&createdAt,
 		&updatedAt,
 	)
 	if err == sql.ErrNoRows {
-		return OfflineTaskRecord{}, false
+		return OfflineTaskRecord{}, sql.ErrNoRows
 	}
 	if err != nil {
-		return OfflineTaskRecord{}, false
+		return OfflineTaskRecord{}, err
 	}
 
 	record.Task.Status = drivers.TaskStatus(status)
 	record.Task.SavePath = record.SavePath
 	record.Task.CreatedAt = parseTime(taskCreatedAt)
 	record.Task.UpdatedAt = parseTime(taskUpdatedAt)
+	record.LastSyncedAt = parseTime(lastSyncedAt)
+	record.CompletedAt = parseTime(completedAt)
+	record.RemoteCleanedAt = parseTime(remoteCleanedAt)
 	record.CreatedAt = parseTime(createdAt)
 	record.UpdatedAt = parseTime(updatedAt)
 
@@ -287,7 +381,7 @@ func scanRecord(row *sql.Row) (OfflineTaskRecord, bool) {
 		_ = json.Unmarshal([]byte(filesJSON), &record.Task.Files)
 	}
 
-	return cloneRecord(record), true
+	return cloneRecord(record), nil
 }
 
 func ensureSQLiteDir(dsn string) error {

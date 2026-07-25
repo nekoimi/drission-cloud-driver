@@ -19,6 +19,11 @@ offline:
   store:
     driver: "postgres"
     dsn: ${OFFLINE_STORE_DSN}
+  sync:
+    enabled: true
+    interval_seconds: 15
+    cleanup_completed: true
+    cleanup_grace_seconds: 30
 
 rate_limit:
   enabled: true

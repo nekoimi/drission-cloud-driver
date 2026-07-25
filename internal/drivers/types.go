@@ -46,6 +46,7 @@ const (
 type OfflineTask struct {
 	TaskID         string     `json:"task_id"`
 	ProviderTaskID string     `json:"provider_task_id,omitempty"`
+	ProviderStatus int        `json:"-"`
 	Status         TaskStatus `json:"status"`
 	Name           string     `json:"name,omitempty"`
 	Progress       float64    `json:"progress,omitempty"`

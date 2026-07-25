@@ -3,6 +3,7 @@ package offline
 import (
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/nekoimi/drission-cloud-driver/internal/drivers"
 )
@@ -23,9 +24,13 @@ func TestSQLiteStorePersistsRecords(t *testing.T) {
 		Category:     "movie",
 		SavePath:     "/downloads",
 		Metadata:     map[string]string{"source": "test"},
+		LastSyncedAt: time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC),
+		SyncAttempts: 2,
+		SyncError:    "temporary error",
 		Task: drivers.OfflineTask{
 			TaskID:         "115:abc",
 			ProviderTaskID: "abc",
+			ProviderStatus: 1,
 			Status:         drivers.TaskPending,
 			Name:           "movie",
 			Progress:       12.5,
@@ -75,6 +80,16 @@ func TestSQLiteStorePersistsRecords(t *testing.T) {
 	}
 	if len(got.Task.Files) != 1 || got.Task.Files[0].ID != "file-1" {
 		t.Fatalf("files = %#v, want persisted file", got.Task.Files)
+	}
+	if got.Task.ProviderStatus != 1 || got.LastSyncedAt.IsZero() || got.SyncAttempts != 2 {
+		t.Fatalf("sync metadata = %+v, want persisted provider sync state", got)
+	}
+	listed, err := reopened.List("115", "profile-a")
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if len(listed) != 1 || listed[0].Task.TaskID != "115:abc" {
+		t.Fatalf("List() = %#v, want persisted task", listed)
 	}
 }
 

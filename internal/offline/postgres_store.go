@@ -1,6 +1,7 @@
 package offline
 
 import (
+	"context"
 	"crypto/sha256"
 	"database/sql"
 	"fmt"
@@ -15,6 +16,8 @@ import (
 type PostgresStore struct {
 	db *sql.DB
 }
+
+const offlineSyncAdvisoryLockID int64 = 0x4452495353494F4E
 
 func NewPostgresStore(dsn string) (*PostgresStore, error) {
 	dsn = strings.TrimSpace(dsn)
@@ -47,6 +50,27 @@ func (s *PostgresStore) Close() error {
 	return s.db.Close()
 }
 
+func (s *PostgresStore) WithSyncCycleLock(ctx context.Context, fn func() error) (bool, error) {
+	conn, err := s.db.Conn(ctx)
+	if err != nil {
+		return false, fmt.Errorf("acquire postgres sync connection: %w", err)
+	}
+	defer conn.Close()
+
+	var locked bool
+	if err := conn.QueryRowContext(ctx, `SELECT pg_try_advisory_lock($1)`, offlineSyncAdvisoryLockID).Scan(&locked); err != nil {
+		return false, fmt.Errorf("acquire offline sync advisory lock: %w", err)
+	}
+	if !locked {
+		return false, nil
+	}
+	defer func() {
+		_, _ = conn.ExecContext(context.Background(), `SELECT pg_advisory_unlock($1)`, offlineSyncAdvisoryLockID)
+	}()
+
+	return true, fn()
+}
+
 func (s *PostgresStore) Put(task OfflineTaskRecord) error {
 	task = sanitizePostgresRecord(task)
 	if strings.TrimSpace(task.Task.TaskID) == "" {
@@ -66,12 +90,15 @@ func (s *PostgresStore) Get(taskID string) (OfflineTaskRecord, bool) {
 	row := s.db.QueryRow(`
 SELECT task_id, platform, profile_id, client_task_id, url, category, save_path,
        save_dir_json, metadata_json, provider_task_id, status, name, progress, error_code,
-       error_message, files_json, task_created_at, task_updated_at, created_at, updated_at
+       error_message, files_json, provider_status, task_created_at, task_updated_at,
+       last_synced_at, sync_attempts, sync_error, completed_at, remote_cleaned_at,
+       cleanup_attempts, cleanup_error, created_at, updated_at
 FROM offline_tasks
 WHERE task_id = $1
 `, taskID)
 
-	return scanRecord(row)
+	record, err := scanRecord(row)
+	return record, err == nil
 }
 
 func (s *PostgresStore) GetByClientTask(platform, profileID, clientTaskID string) (OfflineTaskRecord, bool) {
@@ -83,12 +110,45 @@ func (s *PostgresStore) GetByClientTask(platform, profileID, clientTaskID string
 	row := s.db.QueryRow(`
 SELECT task_id, platform, profile_id, client_task_id, url, category, save_path,
        save_dir_json, metadata_json, provider_task_id, status, name, progress, error_code,
-       error_message, files_json, task_created_at, task_updated_at, created_at, updated_at
+       error_message, files_json, provider_status, task_created_at, task_updated_at,
+       last_synced_at, sync_attempts, sync_error, completed_at, remote_cleaned_at,
+       cleanup_attempts, cleanup_error, created_at, updated_at
 FROM offline_tasks
 WHERE client_key = $1
 `, key)
 
-	return scanRecord(row)
+	record, err := scanRecord(row)
+	return record, err == nil
+}
+
+func (s *PostgresStore) List(platform, profileID string) ([]OfflineTaskRecord, error) {
+	rows, err := s.db.Query(`
+SELECT task_id, platform, profile_id, client_task_id, url, category, save_path,
+       save_dir_json, metadata_json, provider_task_id, status, name, progress, error_code,
+       error_message, files_json, provider_status, task_created_at, task_updated_at,
+       last_synced_at, sync_attempts, sync_error, completed_at, remote_cleaned_at,
+       cleanup_attempts, cleanup_error, created_at, updated_at
+FROM offline_tasks
+WHERE ($1 = '' OR platform = $1) AND ($2 = '' OR profile_id = $2)
+ORDER BY created_at DESC
+`, platform, profileID)
+	if err != nil {
+		return nil, fmt.Errorf("list postgres offline tasks: %w", err)
+	}
+	defer rows.Close()
+
+	records := make([]OfflineTaskRecord, 0)
+	for rows.Next() {
+		record, err := scanRecord(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan postgres offline task: %w", err)
+		}
+		records = append(records, record)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate postgres offline tasks: %w", err)
+	}
+	return records, nil
 }
 
 func (s *PostgresStore) Update(task OfflineTaskRecord) error {
@@ -128,13 +188,30 @@ CREATE TABLE IF NOT EXISTS offline_tasks (
     error_code TEXT NOT NULL DEFAULT '',
     error_message TEXT NOT NULL DEFAULT '',
     files_json TEXT NOT NULL DEFAULT '[]',
+    provider_status INTEGER NOT NULL DEFAULT 0,
     task_created_at TEXT NOT NULL DEFAULT '',
     task_updated_at TEXT NOT NULL DEFAULT '',
+    last_synced_at TEXT NOT NULL DEFAULT '',
+    sync_attempts INTEGER NOT NULL DEFAULT 0,
+    sync_error TEXT NOT NULL DEFAULT '',
+    completed_at TEXT NOT NULL DEFAULT '',
+    remote_cleaned_at TEXT NOT NULL DEFAULT '',
+    cleanup_attempts INTEGER NOT NULL DEFAULT 0,
+    cleanup_error TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
 ALTER TABLE offline_tasks
     ADD COLUMN IF NOT EXISTS save_dir_json TEXT NOT NULL DEFAULT '';
+ALTER TABLE offline_tasks
+    ADD COLUMN IF NOT EXISTS provider_status INTEGER NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS last_synced_at TEXT NOT NULL DEFAULT '',
+    ADD COLUMN IF NOT EXISTS sync_attempts INTEGER NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS sync_error TEXT NOT NULL DEFAULT '',
+    ADD COLUMN IF NOT EXISTS completed_at TEXT NOT NULL DEFAULT '',
+    ADD COLUMN IF NOT EXISTS remote_cleaned_at TEXT NOT NULL DEFAULT '',
+    ADD COLUMN IF NOT EXISTS cleanup_attempts INTEGER NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS cleanup_error TEXT NOT NULL DEFAULT '';
 CREATE UNIQUE INDEX IF NOT EXISTS idx_offline_tasks_client_key
     ON offline_tasks(client_key)
     WHERE client_key IS NOT NULL;
@@ -172,8 +249,9 @@ INSERT INTO offline_tasks (
     task_id, platform, profile_id, client_task_id, client_key, url, category,
     save_path, save_dir_json, metadata_json, provider_task_id, status, name, progress,
     error_code, error_message, files_json, task_created_at, task_updated_at,
-    created_at, updated_at
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
+    provider_status, last_synced_at, sync_attempts, sync_error, completed_at,
+    remote_cleaned_at, cleanup_attempts, cleanup_error, created_at, updated_at
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29)
 ON CONFLICT(task_id) DO UPDATE SET
     platform = excluded.platform,
     profile_id = excluded.profile_id,
@@ -191,8 +269,16 @@ ON CONFLICT(task_id) DO UPDATE SET
     error_code = excluded.error_code,
     error_message = excluded.error_message,
     files_json = excluded.files_json,
+    provider_status = excluded.provider_status,
     task_created_at = excluded.task_created_at,
     task_updated_at = excluded.task_updated_at,
+    last_synced_at = excluded.last_synced_at,
+    sync_attempts = excluded.sync_attempts,
+    sync_error = excluded.sync_error,
+    completed_at = excluded.completed_at,
+    remote_cleaned_at = excluded.remote_cleaned_at,
+    cleanup_attempts = excluded.cleanup_attempts,
+    cleanup_error = excluded.cleanup_error,
     updated_at = excluded.updated_at
 `,
 		task.Task.TaskID,
@@ -214,6 +300,14 @@ ON CONFLICT(task_id) DO UPDATE SET
 		string(filesJSON),
 		formatTime(task.Task.CreatedAt),
 		formatTime(task.Task.UpdatedAt),
+		task.Task.ProviderStatus,
+		formatTime(task.LastSyncedAt),
+		task.SyncAttempts,
+		task.SyncError,
+		formatTime(task.CompletedAt),
+		formatTime(task.RemoteCleanedAt),
+		task.CleanupAttempts,
+		task.CleanupError,
 		formatTime(task.CreatedAt),
 		formatTime(task.UpdatedAt),
 	)
@@ -257,6 +351,8 @@ func sanitizePostgresRecord(task OfflineTaskRecord) OfflineTaskRecord {
 	task.Task.SavePath = clean(task.Task.SavePath)
 	task.Task.ErrorCode = clean(task.Task.ErrorCode)
 	task.Task.ErrorMessage = clean(task.Task.ErrorMessage)
+	task.SyncError = clean(task.SyncError)
+	task.CleanupError = clean(task.CleanupError)
 
 	return task
 }

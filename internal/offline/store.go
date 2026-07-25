@@ -1,7 +1,9 @@
 package offline
 
 import (
+	"context"
 	"errors"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -11,19 +13,25 @@ import (
 
 var ErrTaskIDRequired = errors.New("offline task id is required")
 
-// OfflineTaskRecord stores the local metadata needed to make offline task
-// submission idempotent inside the current process.
+// OfflineTaskRecord is the local source of truth for an offline task.
 type OfflineTaskRecord struct {
-	Platform     string
-	ProfileID    string
-	ClientTaskID string
-	URL          string
-	Category     string
-	SavePath     string
-	Metadata     map[string]string
-	Task         drivers.OfflineTask
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	Platform        string
+	ProfileID       string
+	ClientTaskID    string
+	URL             string
+	Category        string
+	SavePath        string
+	Metadata        map[string]string
+	Task            drivers.OfflineTask
+	LastSyncedAt    time.Time
+	SyncAttempts    int
+	SyncError       string
+	CompletedAt     time.Time
+	RemoteCleanedAt time.Time
+	CleanupAttempts int
+	CleanupError    string
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
 }
 
 // Store keeps offline task records.
@@ -31,7 +39,13 @@ type Store interface {
 	Put(task OfflineTaskRecord) error
 	Get(taskID string) (OfflineTaskRecord, bool)
 	GetByClientTask(platform, profileID, clientTaskID string) (OfflineTaskRecord, bool)
+	List(platform, profileID string) ([]OfflineTaskRecord, error)
 	Update(task OfflineTaskRecord) error
+}
+
+// SyncCycleLocker optionally serializes a sync cycle across service replicas.
+type SyncCycleLocker interface {
+	WithSyncCycleLock(ctx context.Context, fn func() error) (bool, error)
 }
 
 // MemoryStore is a process-local offline task repository.
@@ -91,6 +105,26 @@ func (s *MemoryStore) GetByClientTask(platform, profileID, clientTaskID string) 
 
 	task, ok := s.byTask[taskID]
 	return cloneRecord(task), ok
+}
+
+func (s *MemoryStore) List(platform, profileID string) ([]OfflineTaskRecord, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	tasks := make([]OfflineTaskRecord, 0, len(s.byTask))
+	for _, task := range s.byTask {
+		if platform != "" && task.Platform != platform {
+			continue
+		}
+		if profileID != "" && task.ProfileID != profileID {
+			continue
+		}
+		tasks = append(tasks, cloneRecord(task))
+	}
+	sort.Slice(tasks, func(i, j int) bool {
+		return tasks[i].CreatedAt.After(tasks[j].CreatedAt)
+	})
+	return tasks, nil
 }
 
 func (s *MemoryStore) Update(task OfflineTaskRecord) error {

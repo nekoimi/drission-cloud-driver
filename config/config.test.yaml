@@ -18,6 +18,11 @@ offline:
   store:
     driver: "memory"
     dsn: ""
+  sync:
+    enabled: false
+    interval_seconds: 15
+    cleanup_completed: false
+    cleanup_grace_seconds: 30
 
 rate_limit:
   enabled: false

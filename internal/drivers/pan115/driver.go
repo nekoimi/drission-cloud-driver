@@ -171,14 +171,27 @@ func (d *Driver) QueryOfflineTask(ctx context.Context, profileID string, taskID 
 	}
 	providerTaskID := drivers.ProviderTaskID(platform115, taskID)
 
-	resp, err := client.ListOfflineTask(1)
-	if err != nil {
-		return nil, errcode.Wrap(errcode.ErrOperationFailed, fmt.Errorf("list offline tasks: %w", err))
-	}
+	for page := int64(1); ; page++ {
+		resp, err := client.ListOfflineTask(page)
+		if err != nil {
+			return nil, errcode.Wrap(errcode.ErrOperationFailed, fmt.Errorf("list offline tasks page %d: %w", page, err))
+		}
 
-	for _, task := range resp.Tasks {
-		if task.InfoHash == providerTaskID {
-			return d.toOfflineTask(client, task), nil
+		for _, task := range resp.Tasks {
+			if task != nil && strings.EqualFold(task.InfoHash, providerTaskID) {
+				d.Logger.Info("refreshed 115 offline task",
+					zap.String("task_id", taskID),
+					zap.Int("provider_status", task.Status),
+					zap.Float64("provider_percent", task.Percent),
+					zap.String("provider_file_id", task.FileId),
+					zap.Int64("page", page),
+				)
+				return d.toOfflineTask(client, task), nil
+			}
+		}
+
+		if page >= resp.PageCount || resp.PageCount <= 0 {
+			break
 		}
 	}
 
@@ -206,17 +219,23 @@ func (d *Driver) ListOfflineTasks(ctx context.Context, profileID string) (*drive
 		return nil, err
 	}
 
-	resp, err := client.ListOfflineTask(1)
-	if err != nil {
-		return nil, errcode.Wrap(errcode.ErrOperationFailed, fmt.Errorf("list offline tasks: %w", err))
+	tasks := make([]drivers.OfflineTask, 0)
+	total := 0
+	for page := int64(1); ; page++ {
+		resp, err := client.ListOfflineTask(page)
+		if err != nil {
+			return nil, errcode.Wrap(errcode.ErrOperationFailed, fmt.Errorf("list offline tasks page %d: %w", page, err))
+		}
+		if resp.Total > 0 {
+			total = int(resp.Total)
+		}
+		for _, task := range resp.Tasks {
+			tasks = append(tasks, *d.toOfflineTask(client, task))
+		}
+		if page >= resp.PageCount || resp.PageCount <= 0 {
+			break
+		}
 	}
-
-	tasks := make([]drivers.OfflineTask, len(resp.Tasks))
-	for i, task := range resp.Tasks {
-		tasks[i] = *d.toOfflineTask(client, task)
-	}
-
-	total := int(resp.Total)
 	if total == 0 {
 		total = len(tasks)
 	}
@@ -814,6 +833,7 @@ func toOfflineTask(task *driver.OfflineTask) *drivers.OfflineTask {
 	result := &drivers.OfflineTask{
 		TaskID:         drivers.BuildTaskID(platform115, task.InfoHash),
 		ProviderTaskID: task.InfoHash,
+		ProviderStatus: task.Status,
 		Status:         mapOfflineStatus(task),
 		Name:           task.Name,
 		Progress:       task.Percent / 100.0,
@@ -1015,10 +1035,10 @@ func mapOfflineStatus(task *driver.OfflineTask) drivers.TaskStatus {
 	switch {
 	case task.IsTodo():
 		return drivers.TaskPending
+	case task.IsDone() || (task.Percent >= 100 && strings.TrimSpace(task.FileId) != ""):
+		return drivers.TaskCompleted
 	case task.IsRunning():
 		return drivers.TaskRunning
-	case task.IsDone():
-		return drivers.TaskCompleted
 	case task.IsFailed():
 		return drivers.TaskFailed
 	default:

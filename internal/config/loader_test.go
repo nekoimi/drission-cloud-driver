@@ -80,4 +80,10 @@ func TestDefaultConfig(t *testing.T) {
 	if cfg.Offline.Store.DSN == "" {
 		t.Fatalf("default offline store dsn is empty")
 	}
+	if !cfg.Offline.Sync.Enabled || cfg.Offline.Sync.IntervalSeconds != 15 {
+		t.Fatalf("default offline sync = %+v, want enabled with 15s interval", cfg.Offline.Sync)
+	}
+	if !cfg.Offline.Sync.CleanupCompleted {
+		t.Fatalf("default offline cleanup is disabled")
+	}
 }
