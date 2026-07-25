@@ -1,6 +1,7 @@
 package offline
 
 import (
+	"crypto/sha256"
 	"database/sql"
 	"fmt"
 	"strings"
@@ -74,7 +75,7 @@ WHERE task_id = $1
 }
 
 func (s *PostgresStore) GetByClientTask(platform, profileID, clientTaskID string) (OfflineTaskRecord, bool) {
-	key := clientKey(platform, profileID, clientTaskID)
+	key := postgresClientKey(platform, profileID, clientTaskID)
 	if key == "" {
 		return OfflineTaskRecord{}, false
 	}
@@ -162,7 +163,7 @@ func (s *PostgresStore) save(task OfflineTaskRecord) error {
 	}
 
 	clientKeyValue := sql.NullString{}
-	if key := clientKey(task.Platform, task.ProfileID, task.ClientTaskID); key != "" {
+	if key := postgresClientKey(task.Platform, task.ProfileID, task.ClientTaskID); key != "" {
 		clientKeyValue = sql.NullString{String: key, Valid: true}
 	}
 
@@ -221,6 +222,17 @@ ON CONFLICT(task_id) DO UPDATE SET
 	}
 
 	return nil
+}
+
+// The in-memory store separates the client-key components with NUL bytes.
+// PostgreSQL TEXT cannot store NUL, so persist a stable digest of that
+// collision-safe representation instead.
+func postgresClientKey(platform, profileID, clientTaskID string) string {
+	key := clientKey(platform, profileID, clientTaskID)
+	if key == "" {
+		return ""
+	}
+	return fmt.Sprintf("%x", sha256.Sum256([]byte(key)))
 }
 
 // PostgreSQL text values cannot contain the NUL byte. Provider data and

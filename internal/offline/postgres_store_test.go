@@ -43,7 +43,7 @@ func TestSanitizePostgresRecordRemovesNULBytes(t *testing.T) {
 		got.Task.ErrorMessage,
 	}
 	for _, value := range values {
-		if containsNUL := len(value) != len([]byte(value)) || hasNUL(value); containsNUL {
+		if hasNUL(value) {
 			t.Fatalf("sanitized value still contains NUL: %q", value)
 		}
 	}
@@ -55,6 +55,30 @@ func TestSanitizePostgresRecordRemovesNULBytes(t *testing.T) {
 		t.Fatalf("URL = %q, want NUL removed", got.URL)
 	}
 }
+
+func TestPostgresClientKeyIsStableAndContainsNoNUL(t *testing.T) {
+	got := postgresClientKey("115", "profile-a", "client-1")
+	if got == "" {
+		t.Fatal("postgresClientKey() is empty")
+	}
+	if hasNUL(got) {
+		t.Fatalf("postgresClientKey() contains NUL: %q", got)
+	}
+	if len(got) != sha256HexLength {
+		t.Fatalf("postgresClientKey() length = %d, want %d", len(got), sha256HexLength)
+	}
+	if again := postgresClientKey("115", "profile-a", "client-1"); again != got {
+		t.Fatalf("postgresClientKey() is not stable: %q != %q", got, again)
+	}
+	if other := postgresClientKey("115", "profile-a", "client-2"); other == got {
+		t.Fatalf("different client task IDs produced the same key: %q", got)
+	}
+	if empty := postgresClientKey("115", "profile-a", ""); empty != "" {
+		t.Fatalf("empty client task ID produced key %q", empty)
+	}
+}
+
+const sha256HexLength = 64
 
 func hasNUL(value string) bool {
 	for i := 0; i < len(value); i++ {
