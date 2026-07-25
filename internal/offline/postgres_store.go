@@ -47,6 +47,7 @@ func (s *PostgresStore) Close() error {
 }
 
 func (s *PostgresStore) Put(task OfflineTaskRecord) error {
+	task = sanitizePostgresRecord(task)
 	if strings.TrimSpace(task.Task.TaskID) == "" {
 		return ErrTaskIDRequired
 	}
@@ -90,6 +91,7 @@ WHERE client_key = $1
 }
 
 func (s *PostgresStore) Update(task OfflineTaskRecord) error {
+	task = sanitizePostgresRecord(task)
 	if strings.TrimSpace(task.Task.TaskID) == "" {
 		return ErrTaskIDRequired
 	}
@@ -130,6 +132,8 @@ CREATE TABLE IF NOT EXISTS offline_tasks (
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
+ALTER TABLE offline_tasks
+    ADD COLUMN IF NOT EXISTS save_dir_json TEXT NOT NULL DEFAULT '';
 CREATE UNIQUE INDEX IF NOT EXISTS idx_offline_tasks_client_key
     ON offline_tasks(client_key)
     WHERE client_key IS NOT NULL;
@@ -217,4 +221,30 @@ ON CONFLICT(task_id) DO UPDATE SET
 	}
 
 	return nil
+}
+
+// PostgreSQL text values cannot contain the NUL byte. Provider data and
+// user-supplied metadata can occasionally contain it, so strip it at the
+// persistence boundary instead of allowing an otherwise successful remote
+// task submission to be lost locally.
+func sanitizePostgresRecord(task OfflineTaskRecord) OfflineTaskRecord {
+	clean := func(value string) string {
+		return strings.ReplaceAll(value, "\x00", "")
+	}
+
+	task.Platform = clean(task.Platform)
+	task.ProfileID = clean(task.ProfileID)
+	task.ClientTaskID = clean(task.ClientTaskID)
+	task.URL = clean(task.URL)
+	task.Category = clean(task.Category)
+	task.SavePath = clean(task.SavePath)
+	task.Task.TaskID = clean(task.Task.TaskID)
+	task.Task.ProviderTaskID = clean(task.Task.ProviderTaskID)
+	task.Task.Status = drivers.TaskStatus(clean(string(task.Task.Status)))
+	task.Task.Name = clean(task.Task.Name)
+	task.Task.SavePath = clean(task.Task.SavePath)
+	task.Task.ErrorCode = clean(task.Task.ErrorCode)
+	task.Task.ErrorMessage = clean(task.Task.ErrorMessage)
+
+	return task
 }
