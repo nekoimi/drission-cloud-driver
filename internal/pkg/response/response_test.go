@@ -2,12 +2,15 @@ package response
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/gin-gonic/gin"
 	"github.com/nekoimi/drission-cloud-driver/internal/pkg/errcode"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zaptest/observer"
 )
 
 func TestSuccessWritesUnifiedResponse(t *testing.T) {
@@ -80,5 +83,46 @@ func TestHTTPStatusFromCode(t *testing.T) {
 				t.Fatalf("httpStatusFromCode(%d) = %d, want %d", tt.code, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestHandleLogsServerAppError(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	core, logs := observer.New(zap.ErrorLevel)
+	logger := zap.New(core)
+
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set("X-Request-ID", "request-123")
+		c.Next()
+	})
+	router.DELETE("/drivers/115/fs/remove", Handle(func(c *gin.Context) (any, error) {
+		return nil, errcode.Wrap(errcode.ErrOperationFailed, errors.New("remove /test: api rejected request"))
+	}, logger))
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodDelete, "/drivers/115/fs/remove", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusInternalServerError)
+	}
+	if logs.Len() != 1 {
+		t.Fatalf("log entries = %d, want 1", logs.Len())
+	}
+
+	entry := logs.All()[0]
+	if entry.Message != "handler error" {
+		t.Fatalf("message = %q, want %q", entry.Message, "handler error")
+	}
+	fields := entry.ContextMap()
+	if fields["code"] != int64(errcode.ErrOperationFailed.Value) {
+		t.Fatalf("code field = %v, want %d", fields["code"], errcode.ErrOperationFailed.Value)
+	}
+	if fields["request_id"] != "request-123" {
+		t.Fatalf("request_id field = %v, want %q", fields["request_id"], "request-123")
+	}
+	if fields["error"] != "[50012] driver operation failed: remove /test: api rejected request" {
+		t.Fatalf("error field = %v, want wrapped operation error", fields["error"])
 	}
 }

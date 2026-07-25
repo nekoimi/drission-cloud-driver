@@ -18,6 +18,18 @@ func Handle(fn HandlerFunc, logger *zap.Logger) gin.HandlerFunc {
 		data, err := fn(c)
 		if err != nil {
 			if appErr, ok := IsAppError(err); ok {
+				if httpStatusFromCode(appErr.Code.Value) >= http.StatusInternalServerError {
+					fields := []zap.Field{
+						zap.String("method", c.Request.Method),
+						zap.String("path", c.Request.URL.Path),
+						zap.Int("code", appErr.Code.Value),
+						zap.Error(err),
+					}
+					if requestID, exists := c.Get("X-Request-ID"); exists {
+						fields = append(fields, zap.Any("request_id", requestID))
+					}
+					logger.Error("handler error", fields...)
+				}
 				AppErr(c, appErr)
 				return
 			}
